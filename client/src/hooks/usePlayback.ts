@@ -85,6 +85,21 @@ export function usePlayback() {
       const activeNotes = getActiveNotesAtTime(file, newTime);
       const activeNoteNumbers = new Set(activeNotes.map((n) => n.noteNumber));
 
+      // Wait mode: don't advance time until user plays the required notes
+      if (state.playback.waitMode && activeNotes.length > 0) {
+        const requiredNotes = new Set(activeNotes.map((n) => n.noteNumber));
+        const liveNotes = state.liveNotes;
+        const allPlayed = [...requiredNotes].every((note) => liveNotes.has(note));
+
+        if (!allPlayed) {
+          // Don't advance time - keep currentTimeRef at prevTime
+          currentTimeRef.current = prevTime;
+          // Still update the animation frame to keep checking
+          animationFrameRef.current = requestAnimationFrame(tick);
+          return;
+        }
+      }
+
       // Find newly started notes
       for (const track of file.tracks) {
         if (!track.enabled) continue;
@@ -144,26 +159,6 @@ export function usePlayback() {
     }
   }, [playback.isPlaying]);
 
-  // Handle wait mode - pause when waiting for correct note
-  useEffect(() => {
-    if (!playback.isPlaying || !playback.waitMode) return;
-
-    const file = getCurrentFile();
-    if (!file) return;
-
-    const activeNotes = getActiveNotesAtTime(file, playback.currentTime);
-
-    if (activeNotes.length > 0) {
-      // Check if all required notes are being played
-      const requiredNotes = new Set(activeNotes.map((n) => n.noteNumber));
-      const allPlayed = [...requiredNotes].every((note) => liveNotes.has(note));
-
-      if (!allPlayed) {
-        // Pause and wait
-        // This will be handled by not advancing time until notes are played
-      }
-    }
-  }, [playback.isPlaying, playback.waitMode, playback.currentTime, liveNotes, getCurrentFile]);
 
   /** Toggle play/pause */
   const togglePlay = useCallback(async () => {
