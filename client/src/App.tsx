@@ -44,7 +44,7 @@ function App() {
 
       <div className="main-content">
         {currentFile && settings.showFallingNotes && (
-          <FallingNotes height={400} lookahead={3} />
+          <FallingNotes lookahead={3} />
         )}
 
         {!currentFile && (

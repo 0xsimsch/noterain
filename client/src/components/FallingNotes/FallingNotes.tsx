@@ -4,8 +4,6 @@ import { useMidiStore, getVisibleNotes } from '../../stores/midiStore';
 import { PIANO_MIN_NOTE, PIANO_MAX_NOTE, isBlackKey } from '../../types/midi';
 
 interface FallingNotesProps {
-  /** Height of the canvas */
-  height?: number;
   /** How many seconds of notes to show ahead */
   lookahead?: number;
 }
@@ -33,7 +31,7 @@ function getNoteX(noteNumber: number): { x: number; width: number } {
   }
 }
 
-export function FallingNotes({ height = 400, lookahead = 3 }: FallingNotesProps) {
+export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const notesContainerRef = useRef<Container | null>(null);
@@ -253,8 +251,9 @@ export function FallingNotes({ height = 400, lookahead = 3 }: FallingNotesProps)
       ref={containerRef}
       style={{
         width: '100%',
-        height,
-        position: 'relative',
+        height: '100%',
+        position: 'absolute',
+        inset: 0,
         overflow: 'hidden',
         background: '#1a1a2e',
       }}

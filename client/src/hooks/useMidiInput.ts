@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { WebMidi, NoteMessageEvent, PortEvent } from 'webmidi';
 import { useMidiStore } from '../stores/midiStore';
 import type { MidiDevice } from '../types/midi';
@@ -39,6 +39,8 @@ export function useMidiInput() {
 
   // Track device IDs present at startup (to detect newly connected ones)
   const initialInputIdsRef = useRef<Set<string> | null>(null);
+  // Track when WebMidi is ready so note listener effect can re-run
+  const [isWebMidiReady, setIsWebMidiReady] = useState(false);
 
   // Initialize WebMidi
   useEffect(() => {
@@ -47,14 +49,19 @@ export function useMidiInput() {
     async function init() {
       try {
         await WebMidi.enable({ sysex: false });
+        console.log('[MidiInput] WebMidi enabled successfully');
 
         if (!mounted) return;
 
         // Record devices present at startup
         initialInputIdsRef.current = new Set(WebMidi.inputs.map((i) => i.id));
+        console.log('[MidiInput] Initial devices:', WebMidi.inputs.map(i => i.name));
 
         // Update device list
         updateDevices();
+
+        // Signal that WebMidi is ready
+        setIsWebMidiReady(true);
 
         // Listen for device changes
         WebMidi.addListener('connected', handleConnected);
@@ -85,14 +92,17 @@ export function useMidiInput() {
     }
 
     function handleConnected(e: PortEvent) {
+      console.log('[MidiInput] Device connected:', e.port.name, 'type:', e.port.type);
       updateDevices();
 
       // Auto-select newly connected hardware input devices
       if (e.port.type === 'input') {
         const isNew = !initialInputIdsRef.current?.has(e.port.id);
         const isHardware = !isVirtualDevice(e.port.name, e.port.manufacturer);
+        console.log('[MidiInput] Input device - isNew:', isNew, 'isHardware:', isHardware);
 
         if (isNew && isHardware) {
+          console.log('[MidiInput] Auto-selecting new hardware device:', e.port.name);
           selectInput(e.port.id);
         }
 
@@ -102,6 +112,7 @@ export function useMidiInput() {
     }
 
     function handleDisconnected(e: PortEvent) {
+      console.log('[MidiInput] Device disconnected:', e.port.name);
       updateDevices();
 
       if (e.port.type === 'input') {
@@ -129,22 +140,35 @@ export function useMidiInput() {
 
   // Handle input selection and note events
   useEffect(() => {
-    if (!WebMidi.enabled || !selectedInputId) {
+    console.log('[MidiInput] Note listener effect - isWebMidiReady:', isWebMidiReady, 'selectedInputId:', selectedInputId);
+
+    if (!isWebMidiReady) {
+      console.log('[MidiInput] WebMidi not ready yet, skipping note listener setup');
+      return;
+    }
+
+    if (!selectedInputId) {
+      console.log('[MidiInput] No input selected, available inputs:', WebMidi.inputs.map(i => ({ id: i.id, name: i.name })));
       clearLiveNotes();
       return;
     }
 
     const input = WebMidi.getInputById(selectedInputId);
     if (!input) {
+      console.log('[MidiInput] Selected input not found:', selectedInputId);
       clearLiveNotes();
       return;
     }
 
+    console.log('[MidiInput] Listening for notes on:', input.name);
+
     const handleNoteOn = (e: NoteMessageEvent) => {
+      console.log('[MidiInput] Note ON:', e.note.name + e.note.octave, '(', e.note.number, ') velocity:', e.note.attack);
       setLiveNote(e.note.number, true);
     };
 
     const handleNoteOff = (e: NoteMessageEvent) => {
+      console.log('[MidiInput] Note OFF:', e.note.name + e.note.octave, '(', e.note.number, ')');
       setLiveNote(e.note.number, false);
     };
 
@@ -156,7 +180,7 @@ export function useMidiInput() {
       input.removeListener('noteoff', handleNoteOff);
       clearLiveNotes();
     };
-  }, [selectedInputId, setLiveNote, clearLiveNotes]);
+  }, [isWebMidiReady, selectedInputId, setLiveNote, clearLiveNotes]);
 
   // Get available inputs (filter out virtual devices)
   const inputs = devices.filter(
