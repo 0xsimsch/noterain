@@ -38,25 +38,33 @@ export function usePlayback() {
       return;
     }
 
-    const file = getCurrentFile();
-    if (!file) {
+    const initialFile = getCurrentFile();
+    if (!initialFile) {
       console.log('[Playback] No file loaded, pausing');
       pause();
       return;
     }
 
-    console.log('[Playback] Starting playback loop, file duration:', file.duration);
+    console.log('[Playback] Starting playback loop, file duration:', initialFile.duration);
     lastTimeRef.current = performance.now();
     // Initialize currentTimeRef from store
     currentTimeRef.current = useMidiStore.getState().playback.currentTime;
 
     const tick = () => {
+      // Read fresh file data each tick to pick up track enabled changes
+      const state = useMidiStore.getState();
+      const file = state.files.find((f) => f.id === state.currentFileId);
+      if (!file) {
+        stop();
+        return;
+      }
+
       const now = performance.now();
       const deltaMs = now - lastTimeRef.current;
       lastTimeRef.current = now;
 
       // Calculate new time using ref (not stale closure)
-      const speed = useMidiStore.getState().playback.speed;
+      const speed = state.playback.speed;
       const deltaSeconds = (deltaMs / 1000) * speed;
       const prevTime = currentTimeRef.current;
       const newTime = prevTime + deltaSeconds;
@@ -73,7 +81,7 @@ export function usePlayback() {
         return;
       }
 
-      // Get notes that should be playing now
+      // Get notes that should be playing now (respects track.enabled)
       const activeNotes = getActiveNotesAtTime(file, newTime);
       const activeNoteNumbers = new Set(activeNotes.map((n) => n.noteNumber));
 
