@@ -98,6 +98,9 @@ export interface PlaybackState {
   activeNotes: Set<number>;
 }
 
+/** Theme options */
+export type Theme = 'mocha' | 'latte';
+
 /** App settings */
 export interface Settings {
   /** Master volume (0-1) */
@@ -116,18 +119,21 @@ export interface Settings {
   metronomeEnabled: boolean;
   /** Notes scroll speed (affects how far ahead notes appear) */
   scrollSpeed: number;
+  /** Color theme */
+  theme: Theme;
 }
 
 /** Default settings */
 export const DEFAULT_SETTINGS: Settings = {
   volume: 0.8,
   audioEnabled: true,
-  leftHandColor: '#3b82f6', // blue
-  rightHandColor: '#22c55e', // green
+  leftHandColor: '#89b4fa', // Catppuccin blue
+  rightHandColor: '#a6e3a1', // Catppuccin green
   showSheetMusic: false,
   showFallingNotes: true,
   metronomeEnabled: false,
   scrollSpeed: 1,
+  theme: 'mocha',
 };
 
 /** Note name utilities */

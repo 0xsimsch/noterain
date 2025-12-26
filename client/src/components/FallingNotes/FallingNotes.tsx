@@ -59,8 +59,12 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
 
     const initApp = async () => {
       try {
+        // Get theme-appropriate background color
+        const theme = useMidiStore.getState().settings.theme;
+        const bgColor = theme === 'latte' ? 0xe6e9ef : 0x181825;
+
         await app.init({
-          backgroundColor: 0x1a1a2e,
+          backgroundColor: bgColor,
           antialias: true,
           resolution: window.devicePixelRatio || 1,
           autoDensity: true,
@@ -260,6 +264,15 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, [isReady]);
 
+  // Update canvas background when theme changes
+  useEffect(() => {
+    const app = appRef.current;
+    if (!app || !isReady) return;
+
+    const bgColor = settings.theme === 'latte' ? 0xe6e9ef : 0x181825;
+    app.renderer.background.color = bgColor;
+  }, [settings.theme, isReady]);
+
   return (
     <div
       ref={containerRef}
@@ -269,7 +282,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
-        background: '#1a1a2e',
+        background: 'var(--canvas-bg)',
       }}
     />
   );

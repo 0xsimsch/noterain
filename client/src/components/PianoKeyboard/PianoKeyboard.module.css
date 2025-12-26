@@ -1,7 +1,7 @@
 .keyboard {
   position: relative;
   width: 100%;
-  background: #1a1a1a;
+  background: var(--ctp-crust);
   overflow: hidden;
   user-select: none;
 }
@@ -32,16 +32,16 @@
 }
 
 .white.active {
-  background: linear-gradient(to bottom, #7dd3fc 0%, #38bdf8 100%);
-  border-color: #0ea5e9;
+  background: linear-gradient(to bottom, var(--ctp-sapphire) 0%, var(--ctp-blue) 100%);
+  border-color: var(--ctp-blue);
 }
 
 .white.live {
-  background: linear-gradient(to bottom, #fdba74 0%, #f97316 100%);
-  border-color: #ea580c;
+  background: linear-gradient(to bottom, var(--ctp-peach) 0%, var(--ctp-maroon) 100%);
+  border-color: var(--ctp-maroon);
   box-shadow:
-    0 0 20px rgba(249, 115, 22, 0.8),
-    0 0 40px rgba(249, 115, 22, 0.4),
+    0 0 20px color-mix(in srgb, var(--ctp-peach) 80%, transparent),
+    0 0 40px color-mix(in srgb, var(--ctp-peach) 40%, transparent),
     inset 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
@@ -60,16 +60,16 @@
 }
 
 .black.active {
-  background: linear-gradient(to bottom, #38bdf8 0%, #0284c7 100%);
+  background: linear-gradient(to bottom, var(--ctp-blue) 0%, var(--ctp-sapphire) 100%);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   transform: translateY(1px);
 }
 
 .black.live {
-  background: linear-gradient(to bottom, #f97316 0%, #c2410c 100%);
+  background: linear-gradient(to bottom, var(--ctp-peach) 0%, var(--ctp-maroon) 100%);
   box-shadow:
-    0 0 15px rgba(249, 115, 22, 0.8),
-    0 0 30px rgba(249, 115, 22, 0.4),
+    0 0 15px color-mix(in srgb, var(--ctp-peach) 80%, transparent),
+    0 0 30px color-mix(in srgb, var(--ctp-peach) 40%, transparent),
     0 1px 2px rgba(0, 0, 0, 0.3);
   transform: translateY(1px);
 }

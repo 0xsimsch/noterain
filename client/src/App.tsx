@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Controls } from './components/Controls/Controls';
 import { FallingNotes } from './components/FallingNotes/FallingNotes';
 import { PianoKeyboard } from './components/PianoKeyboard/PianoKeyboard';
@@ -11,6 +11,11 @@ function App() {
   const { noteOn, noteOff, resumeAudio } = useAudioEngine();
   const { handleDrop, currentFile } = useMidiFile();
   const { settings } = useMidiStore();
+
+  // Apply theme to document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme);
+  }, [settings.theme]);
 
   // Handle key press on virtual piano
   const handleNoteOn = useCallback(

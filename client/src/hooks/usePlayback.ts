@@ -14,7 +14,6 @@ export function usePlayback() {
     toggleWaitMode,
     setActiveNotes,
     getCurrentFile,
-    liveNotes,
   } = useMidiStore();
 
   const { playNote, stopAll, resumeAudio } = useAudioEngine();

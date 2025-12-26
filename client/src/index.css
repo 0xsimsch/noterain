@@ -4,7 +4,96 @@
 
 :root {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Catppuccin Mocha (Dark) */
+[data-theme='mocha'] {
   color-scheme: dark;
+  --ctp-rosewater: #f5e0dc;
+  --ctp-flamingo: #f2cdcd;
+  --ctp-pink: #f5c2e7;
+  --ctp-mauve: #cba6f7;
+  --ctp-red: #f38ba8;
+  --ctp-maroon: #eba0ac;
+  --ctp-peach: #fab387;
+  --ctp-yellow: #f9e2af;
+  --ctp-green: #a6e3a1;
+  --ctp-teal: #94e2d5;
+  --ctp-sky: #89dceb;
+  --ctp-sapphire: #74c7ec;
+  --ctp-blue: #89b4fa;
+  --ctp-lavender: #b4befe;
+  --ctp-text: #cdd6f4;
+  --ctp-subtext1: #bac2de;
+  --ctp-subtext0: #a6adc8;
+  --ctp-overlay2: #9399b2;
+  --ctp-overlay1: #7f849c;
+  --ctp-overlay0: #6c7086;
+  --ctp-surface2: #585b70;
+  --ctp-surface1: #45475a;
+  --ctp-surface0: #313244;
+  --ctp-base: #1e1e2e;
+  --ctp-mantle: #181825;
+  --ctp-crust: #11111b;
+
+  /* Semantic colors */
+  --bg-base: var(--ctp-base);
+  --bg-surface: var(--ctp-surface0);
+  --bg-elevated: var(--ctp-surface1);
+  --bg-overlay: var(--ctp-surface2);
+  --text-primary: var(--ctp-text);
+  --text-secondary: var(--ctp-subtext1);
+  --text-muted: var(--ctp-overlay1);
+  --border-color: var(--ctp-surface1);
+  --accent: var(--ctp-blue);
+  --accent-hover: var(--ctp-sapphire);
+  --warning: var(--ctp-peach);
+  --canvas-bg: var(--ctp-mantle);
+}
+
+/* Catppuccin Latte (Light) */
+[data-theme='latte'] {
+  color-scheme: light;
+  --ctp-rosewater: #dc8a78;
+  --ctp-flamingo: #dd7878;
+  --ctp-pink: #ea76cb;
+  --ctp-mauve: #8839ef;
+  --ctp-red: #d20f39;
+  --ctp-maroon: #e64553;
+  --ctp-peach: #fe640b;
+  --ctp-yellow: #df8e1d;
+  --ctp-green: #40a02b;
+  --ctp-teal: #179299;
+  --ctp-sky: #04a5e5;
+  --ctp-sapphire: #209fb5;
+  --ctp-blue: #1e66f5;
+  --ctp-lavender: #7287fd;
+  --ctp-text: #4c4f69;
+  --ctp-subtext1: #5c5f77;
+  --ctp-subtext0: #6c6f85;
+  --ctp-overlay2: #7c7f93;
+  --ctp-overlay1: #8c8fa1;
+  --ctp-overlay0: #9ca0b0;
+  --ctp-surface2: #acb0be;
+  --ctp-surface1: #bcc0cc;
+  --ctp-surface0: #ccd0da;
+  --ctp-base: #eff1f5;
+  --ctp-mantle: #e6e9ef;
+  --ctp-crust: #dce0e8;
+
+  /* Semantic colors */
+  --bg-base: var(--ctp-base);
+  --bg-surface: var(--ctp-surface0);
+  --bg-elevated: var(--ctp-surface1);
+  --bg-overlay: var(--ctp-surface2);
+  --text-primary: var(--ctp-text);
+  --text-secondary: var(--ctp-subtext1);
+  --text-muted: var(--ctp-overlay1);
+  --border-color: var(--ctp-surface1);
+  --accent: var(--ctp-blue);
+  --accent-hover: var(--ctp-sapphire);
+  --warning: var(--ctp-peach);
+  --canvas-bg: var(--ctp-mantle);
 }
 
 html,
@@ -17,8 +106,8 @@ body,
 }
 
 body {
-  background: #1a1a2e;
-  color: #fff;
+  background: var(--bg-base);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -28,7 +117,7 @@ input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
-  background: #4a4a5a;
+  background: var(--bg-overlay);
   border-radius: 2px;
 }
 
@@ -37,7 +126,7 @@ input[type='range']::-webkit-slider-thumb {
   appearance: none;
   width: 14px;
   height: 14px;
-  background: #fff;
+  background: var(--text-primary);
   border-radius: 50%;
   cursor: pointer;
 }
@@ -45,7 +134,7 @@ input[type='range']::-webkit-slider-thumb {
 input[type='range']::-moz-range-thumb {
   width: 14px;
   height: 14px;
-  background: #fff;
+  background: var(--text-primary);
   border-radius: 50%;
   cursor: pointer;
   border: none;
@@ -55,11 +144,11 @@ input[type='range']::-moz-range-thumb {
 input[type='checkbox'] {
   width: 16px;
   height: 16px;
-  accent-color: #3b82f6;
+  accent-color: var(--accent);
 }
 
-/* Select styling for dark mode */
+/* Select styling */
 select option {
-  background: #2a2a3a;
-  color: #fff;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }

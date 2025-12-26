@@ -206,6 +206,19 @@ export function Controls() {
           </div>
         </div>
       )}
+
+      {/* Theme toggle */}
+      <div className={styles.section}>
+        <button
+          className={`${styles.button} ${styles.themeButton}`}
+          onClick={() =>
+            updateSettings({ theme: settings.theme === 'mocha' ? 'latte' : 'mocha' })
+          }
+          title={`Switch to ${settings.theme === 'mocha' ? 'light' : 'dark'} theme`}
+        >
+          {settings.theme === 'mocha' ? '☀️' : '🌙'}
+        </button>
+      </div>
     </div>
   );
 }
