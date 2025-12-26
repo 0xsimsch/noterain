@@ -69,6 +69,11 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
           return;
         }
 
+        // Style canvas to fit container exactly
+        app.canvas.style.width = '100%';
+        app.canvas.style.height = '100%';
+        app.canvas.style.display = 'block';
+
         container.appendChild(app.canvas);
         appRef.current = app;
 
