@@ -38,9 +38,13 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   const noteGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const [isReady, setIsReady] = useState(false);
 
-  const { settings, getCurrentFile } = useMidiStore();
-  // Use getState() to read currentTime inside animation loop without causing re-renders
+  const { settings } = useMidiStore();
+  // Use getState() to read values inside animation loop without causing re-renders
   const getPlaybackTime = () => useMidiStore.getState().playback.currentTime;
+  const getCurrentFile = () => {
+    const state = useMidiStore.getState();
+    return state.files.find((f) => f.id === state.currentFileId) || null;
+  };
 
   // Initialize PixiJS
   useEffect(() => {
@@ -209,10 +213,10 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         noteGraphicsRef.current.delete(key);
       }
     }
-  // Note: playback.currentTime is intentionally excluded - it's read via getPlaybackTime()
-  // to avoid recreating this callback every frame
+  // Note: getCurrentFile and playback.currentTime are read via getState()
+  // to avoid recreating this callback and to always get fresh data
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getCurrentFile, lookahead, settings.leftHandColor, settings.rightHandColor]);
+  }, [lookahead, settings.leftHandColor, settings.rightHandColor]);
 
   // Animation loop - only start when ready
   useEffect(() => {
