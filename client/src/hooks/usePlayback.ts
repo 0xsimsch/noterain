@@ -140,7 +140,7 @@ export function usePlayback() {
     };
     // Note: playback.currentTime and playback.speed are intentionally excluded -
     // they're read via useMidiStore.getState() inside tick() to avoid stale closures
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [
     playback.isPlaying,
     getCurrentFile,

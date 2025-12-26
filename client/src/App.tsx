@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { Controls } from './components/Controls/Controls';
 import { FallingNotes } from './components/FallingNotes/FallingNotes';
+import { SheetMusic } from './components/SheetMusic/SheetMusic';
 import { PianoKeyboard } from './components/PianoKeyboard/PianoKeyboard';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useMidiFile } from './hooks/useMidiFile';
@@ -48,7 +49,11 @@ function App() {
       <Controls />
 
       <div className="main-content">
-        {currentFile && settings.showFallingNotes && (
+        {currentFile && settings.showSheetMusic && (
+          <SheetMusic />
+        )}
+
+        {currentFile && settings.showFallingNotes && !settings.showSheetMusic && (
           <FallingNotes lookahead={3} />
         )}
 

@@ -1,0 +1,46 @@
+.container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background: var(--canvas-bg);
+}
+
+.svgContainer {
+  position: relative;
+  min-height: 100%;
+}
+
+.svgContainer svg {
+  display: block;
+}
+
+/* Style VexFlow SVG elements based on theme */
+.svgContainer :global(.vf-stavenote),
+.svgContainer :global(.vf-notehead),
+.svgContainer :global(.vf-stem),
+.svgContainer :global(.vf-beam),
+.svgContainer :global(.vf-flag) {
+  fill: var(--text-primary);
+  stroke: var(--text-primary);
+}
+
+.svgContainer :global(.vf-stave) line,
+.svgContainer :global(.vf-stave) path {
+  stroke: var(--text-secondary);
+}
+
+.svgContainer :global(.vf-clef),
+.svgContainer :global(.vf-timesig) {
+  fill: var(--text-primary);
+}
+
+.progressLine {
+  position: absolute;
+  width: 2px;
+  background: var(--ctp-red);
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 0 8px var(--ctp-red);
+  transition: left 0.05s linear;
+}

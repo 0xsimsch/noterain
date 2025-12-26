@@ -134,6 +134,23 @@ export function Controls() {
         </label>
       </div>
 
+      {/* Render mode toggle */}
+      <div className={styles.section}>
+        <label className={styles.label}>View:</label>
+        <button
+          className={`${styles.button} ${!settings.showSheetMusic ? styles.active : ''}`}
+          onClick={() => updateSettings({ showSheetMusic: false })}
+        >
+          Falling Notes
+        </button>
+        <button
+          className={`${styles.button} ${settings.showSheetMusic ? styles.active : ''}`}
+          onClick={() => updateSettings({ showSheetMusic: true })}
+        >
+          Sheet Music
+        </button>
+      </div>
+
       {/* Audio toggle */}
       <div className={styles.section}>
         <label className={styles.checkboxLabel}>

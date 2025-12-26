@@ -34,6 +34,11 @@
   cursor: not-allowed;
 }
 
+.button.active {
+  background: var(--accent);
+  color: var(--bg-base);
+}
+
 .playButton {
   width: 40px;
   padding: 8px;

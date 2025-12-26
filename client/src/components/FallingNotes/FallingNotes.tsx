@@ -220,7 +220,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
     }
   // Note: getCurrentFile and playback.currentTime are read via getState()
   // to avoid recreating this callback and to always get fresh data
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [lookahead, settings.leftHandColor, settings.rightHandColor]);
 
   // Keep ref updated with latest renderNotes
