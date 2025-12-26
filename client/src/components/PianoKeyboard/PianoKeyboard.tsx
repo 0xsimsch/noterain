@@ -1,0 +1,161 @@
+import { useMemo } from 'react';
+import { useMidiStore } from '../../stores/midiStore';
+import {
+  PIANO_MIN_NOTE,
+  PIANO_MAX_NOTE,
+  isBlackKey,
+  getNoteNameFromNumber,
+} from '../../types/midi';
+import styles from './PianoKeyboard.module.css';
+
+interface PianoKeyboardProps {
+  /** Which notes to highlight as active (from playback) */
+  activeNotes?: Set<number>;
+  /** Callback when a key is pressed (mouse/touch) */
+  onNoteOn?: (noteNumber: number) => void;
+  /** Callback when a key is released */
+  onNoteOff?: (noteNumber: number) => void;
+  /** Height of the keyboard in pixels */
+  height?: number;
+}
+
+/** Get the position of a key (0-1 range relative to keyboard width) */
+function getKeyPosition(noteNumber: number): { left: number; width: number } {
+  // Count white keys from start
+  let whiteKeyIndex = 0;
+  for (let n = PIANO_MIN_NOTE; n < noteNumber; n++) {
+    if (!isBlackKey(n)) whiteKeyIndex++;
+  }
+
+  // Total white keys
+  let totalWhiteKeys = 0;
+  for (let n = PIANO_MIN_NOTE; n <= PIANO_MAX_NOTE; n++) {
+    if (!isBlackKey(n)) totalWhiteKeys++;
+  }
+
+  const whiteKeyWidth = 1 / totalWhiteKeys;
+  const blackKeyWidth = whiteKeyWidth * 0.6;
+
+  if (isBlackKey(noteNumber)) {
+    // Black keys are positioned between white keys
+    // They sit to the right of the previous white key
+    const left = whiteKeyIndex * whiteKeyWidth - blackKeyWidth / 2;
+    return { left, width: blackKeyWidth };
+  } else {
+    return { left: whiteKeyIndex * whiteKeyWidth, width: whiteKeyWidth };
+  }
+}
+
+export function PianoKeyboard({
+  activeNotes: propActiveNotes,
+  onNoteOn,
+  onNoteOff,
+  height = 120,
+}: PianoKeyboardProps) {
+  const { playback, liveNotes, settings } = useMidiStore();
+
+  // Combine playback active notes and live notes
+  const activeNotes = useMemo(() => {
+    const combined = new Set<number>();
+    if (propActiveNotes) {
+      propActiveNotes.forEach((n) => combined.add(n));
+    }
+    playback.activeNotes.forEach((n) => combined.add(n));
+    liveNotes.forEach((n) => combined.add(n));
+    return combined;
+  }, [propActiveNotes, playback.activeNotes, liveNotes]);
+
+  // Generate keys with positions
+  const keys = useMemo(() => {
+    const whiteKeys: Array<{
+      noteNumber: number;
+      noteName: string;
+      position: { left: number; width: number };
+    }> = [];
+    const blackKeys: Array<{
+      noteNumber: number;
+      noteName: string;
+      position: { left: number; width: number };
+    }> = [];
+
+    for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+      const key = {
+        noteNumber: note,
+        noteName: getNoteNameFromNumber(note),
+        position: getKeyPosition(note),
+      };
+
+      if (isBlackKey(note)) {
+        blackKeys.push(key);
+      } else {
+        whiteKeys.push(key);
+      }
+    }
+
+    return { whiteKeys, blackKeys };
+  }, []);
+
+  // Handle mouse/touch events
+  const handleMouseDown = (noteNumber: number) => {
+    onNoteOn?.(noteNumber);
+  };
+
+  const handleMouseUp = (noteNumber: number) => {
+    onNoteOff?.(noteNumber);
+  };
+
+  // Get active color based on note (could be track-based in future)
+  const getActiveColor = (noteNumber: number): string => {
+    // Notes below middle C (60) are typically left hand
+    if (noteNumber < 60) {
+      return settings.leftHandColor;
+    }
+    return settings.rightHandColor;
+  };
+
+  const renderKey = (
+    key: { noteNumber: number; noteName: string; position: { left: number; width: number } },
+    isBlack: boolean
+  ) => {
+    const isActive = activeNotes.has(key.noteNumber);
+    const isLive = liveNotes.has(key.noteNumber);
+
+    return (
+      <div
+        key={key.noteNumber}
+        className={`${styles.key} ${isBlack ? styles.black : styles.white} ${
+          isActive ? styles.active : ''
+        } ${isLive ? styles.live : ''}`}
+        style={{
+          left: `${key.position.left * 100}%`,
+          width: `${key.position.width * 100}%`,
+          ...(isActive ? { backgroundColor: getActiveColor(key.noteNumber) } : {}),
+        }}
+        onMouseDown={() => handleMouseDown(key.noteNumber)}
+        onMouseUp={() => handleMouseUp(key.noteNumber)}
+        onMouseLeave={() => handleMouseUp(key.noteNumber)}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          handleMouseDown(key.noteNumber);
+        }}
+        onTouchEnd={() => handleMouseUp(key.noteNumber)}
+        data-note={key.noteName}
+      >
+        {!isBlack && key.noteName.startsWith('C') && (
+          <span className={styles.label}>{key.noteName}</span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className={styles.keyboard} style={{ height }}>
+      <div className={styles.keysContainer}>
+        {/* White keys first (lower z-index) */}
+        {keys.whiteKeys.map((key) => renderKey(key, false))}
+        {/* Black keys on top */}
+        {keys.blackKeys.map((key) => renderKey(key, true))}
+      </div>
+    </div>
+  );
+}

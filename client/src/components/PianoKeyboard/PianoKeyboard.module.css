@@ -1,0 +1,77 @@
+.keyboard {
+  position: relative;
+  width: 100%;
+  background: #1a1a1a;
+  overflow: hidden;
+  user-select: none;
+}
+
+.keysContainer {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.key {
+  position: absolute;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: background-color 0.05s ease;
+}
+
+.white {
+  height: 100%;
+  background: linear-gradient(to bottom, #fafafa 0%, #e8e8e8 100%);
+  border: 1px solid #bbb;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+}
+
+.white:hover {
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+}
+
+.white.active {
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+.white.live {
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.black {
+  height: 62%;
+  background: linear-gradient(to bottom, #404040 0%, #1a1a1a 100%);
+  border-radius: 0 0 4px 4px;
+  z-index: 2;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.1);
+}
+
+.black:hover {
+  background: linear-gradient(to bottom, #505050 0%, #252525 100%);
+}
+
+.black.active {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transform: translateY(1px);
+}
+
+.black.live {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    inset 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.label {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: #888;
+  font-family: system-ui, -apple-system, sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+}
