@@ -36,6 +36,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   const appRef = useRef<Application | null>(null);
   const notesContainerRef = useRef<Container | null>(null);
   const noteGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const renderNotesRef = useRef<() => void>(() => {});
   const [isReady, setIsReady] = useState(false);
 
   const { settings } = useMidiStore();
@@ -218,6 +219,9 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lookahead, settings.leftHandColor, settings.rightHandColor]);
 
+  // Keep ref updated with latest renderNotes
+  renderNotesRef.current = renderNotes;
+
   // Animation loop - only start when ready
   useEffect(() => {
     if (!isReady) return;
@@ -227,7 +231,8 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
 
     console.log('[FallingNotes] Starting animation ticker (once)');
     const ticker = () => {
-      renderNotes();
+      // Call via ref to always use latest version
+      renderNotesRef.current();
     };
 
     app.ticker.add(ticker);
@@ -237,7 +242,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         app.ticker.remove(ticker);
       }
     };
-  }, [isReady, renderNotes]);
+  }, [isReady]);
 
   // Handle resize
   useEffect(() => {
