@@ -31,10 +31,48 @@ function getNoteX(noteNumber: number): { x: number; width: number } {
   }
 }
 
+/** Draw vertical grid lines for each piano key */
+function drawGrid(app: Application, graphics: Graphics, theme: string) {
+  const { width, height } = app.screen;
+  if (width === 0 || height === 0) return;
+
+  graphics.clear();
+
+  const isLight = theme === 'latte';
+  const lineColor = isLight ? 0x9ca0b0 : 0x45475a;
+  const blackKeyBg = isLight ? 0xdce0e8 : 0x1e1e2e;
+
+  // Draw background shading for black key lanes
+  for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+    if (isBlackKey(note)) {
+      const { x, width: noteWidth } = getNoteX(note);
+      graphics.rect(x * width, 0, noteWidth * width, height).fill({ color: blackKeyBg, alpha: 0.5 });
+    }
+  }
+
+  // Draw vertical lines at white key boundaries
+  let whiteKeyIndex = 0;
+  let totalWhiteKeys = 0;
+  for (let n = PIANO_MIN_NOTE; n <= PIANO_MAX_NOTE; n++) {
+    if (!isBlackKey(n)) totalWhiteKeys++;
+  }
+
+  const whiteKeyWidth = width / totalWhiteKeys;
+
+  for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+    if (!isBlackKey(note)) {
+      const x = whiteKeyIndex * whiteKeyWidth;
+      graphics.moveTo(x, 0).lineTo(x, height).stroke({ color: lineColor, width: 1, alpha: 0.7 });
+      whiteKeyIndex++;
+    }
+  }
+}
+
 export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const notesContainerRef = useRef<Container | null>(null);
+  const gridGraphicsRef = useRef<Graphics | null>(null);
   const noteGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const renderNotesRef = useRef<() => void>(() => {});
   const [isReady, setIsReady] = useState(false);
@@ -86,10 +124,18 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         container.appendChild(app.canvas);
         appRef.current = app;
 
+        // Create grid graphics (behind notes)
+        const gridGraphics = new Graphics();
+        app.stage.addChild(gridGraphics);
+        gridGraphicsRef.current = gridGraphics;
+
         // Create notes container
         const notesContainer = new Container();
         app.stage.addChild(notesContainer);
         notesContainerRef.current = notesContainer;
+
+        // Draw initial grid
+        drawGrid(app, gridGraphics, theme);
 
         setIsReady(true);
       } catch (err) {
@@ -255,8 +301,14 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
     const handleResize = () => {
       const app = appRef.current;
       const container = containerRef.current;
+      const gridGraphics = gridGraphicsRef.current;
       if (app && container && app.renderer) {
         app.renderer.resize(container.clientWidth, container.clientHeight);
+        // Redraw grid after resize
+        if (gridGraphics) {
+          const theme = useMidiStore.getState().settings.theme;
+          drawGrid(app, gridGraphics, theme);
+        }
       }
     };
 
@@ -264,13 +316,19 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, [isReady]);
 
-  // Update canvas background when theme changes
+  // Update canvas background and grid when theme changes
   useEffect(() => {
     const app = appRef.current;
+    const gridGraphics = gridGraphicsRef.current;
     if (!app || !isReady) return;
 
     const bgColor = settings.theme === 'latte' ? 0xe6e9ef : 0x181825;
     app.renderer.background.color = bgColor;
+
+    // Redraw grid with new theme colors
+    if (gridGraphics) {
+      drawGrid(app, gridGraphics, settings.theme);
+    }
   }, [settings.theme, isReady]);
 
   return (
