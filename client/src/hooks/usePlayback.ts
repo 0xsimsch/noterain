@@ -62,6 +62,13 @@ export function usePlayback() {
       const deltaMs = now - lastTimeRef.current;
       lastTimeRef.current = now;
 
+      // Check if user seeked externally (slider) - sync if store time differs significantly
+      const storeTime = state.playback.currentTime;
+      if (Math.abs(storeTime - currentTimeRef.current) > 0.1) {
+        currentTimeRef.current = storeTime;
+        scheduledNotesRef.current.clear(); // Clear scheduled notes on seek
+      }
+
       // Calculate new time using ref (not stale closure)
       const speed = state.playback.speed;
       const deltaSeconds = (deltaMs / 1000) * speed;

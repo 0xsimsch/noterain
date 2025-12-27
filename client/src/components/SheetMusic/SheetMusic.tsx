@@ -264,11 +264,10 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
   // Store note positions for highlighting
   const notePositionsRef = useRef<NotePosition[]>([]);
 
-  // Use getState for values that change frequently
-  const getCurrentFile = useCallback(() => {
-    const state = useMidiStore.getState();
-    return state.files.find((f) => f.id === state.currentFileId) || null;
-  }, []);
+  // Subscribe to current file for re-rendering when file changes
+  const currentFileId = useMidiStore((state) => state.currentFileId);
+  const files = useMidiStore((state) => state.files);
+  const currentFile = files.find((f) => f.id === currentFileId) || null;
 
   const getPlaybackTime = useCallback(() => {
     return useMidiStore.getState().playback.currentTime;
@@ -279,8 +278,7 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     const container = svgContainerRef.current;
     if (!container) return;
 
-    const file = getCurrentFile();
-    if (!file || file.tracks.length === 0) {
+    if (!currentFile || currentFile.tracks.length === 0) {
       const existingSvg = container.querySelector('svg');
       if (existingSvg) existingSvg.remove();
       return;
@@ -291,7 +289,7 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     if (existingSvg) existingSvg.remove();
 
     // Get enabled tracks with notes
-    const enabledTracks = file.tracks.filter(t => t.enabled && t.notes.length > 0);
+    const enabledTracks = currentFile.tracks.filter(t => t.enabled && t.notes.length > 0);
 
     if (enabledTracks.length === 0) {
       setRenderedHeight(0);
@@ -299,7 +297,7 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     }
 
     // Get tempo (use first tempo or default)
-    const bpm = file.tempos.length > 0 ? file.tempos[0].bpm : 120;
+    const bpm = currentFile.tempos.length > 0 ? currentFile.tempos[0].bpm : 120;
 
     // Get time signature from file or use prop override (default to 4/4)
     const beatsPerMeasure = beatsPerMeasureProp ?? 4;
@@ -307,16 +305,16 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
 
     // Get key signature from file, or detect from notes if not present
     const allNotes = enabledTracks.flatMap(t => t.notes);
-    const fileKeyNum = file.keySignature?.key ?? 0;
+    const fileKeyNum = currentFile.keySignature?.key ?? 0;
     const keyNum = fileKeyNum !== 0 ? fileKeyNum : detectKeySignature(allNotes);
-    const keyScale = file.keySignature?.scale ?? 0;
+    const keyScale = currentFile.keySignature?.scale ?? 0;
     const vexFlowKey = midiKeyToVexFlow(keyNum, keyScale);
 
     // Group each track's notes into measures
     const trackMeasures: { track: MidiTrack; measures: Measure[]; clef: 'treble' | 'bass' }[] =
       enabledTracks.map(track => ({
         track,
-        measures: groupNotesIntoMeasures(track.notes, file.duration, bpm, beatsPerMeasure),
+        measures: groupNotesIntoMeasures(track.notes, currentFile.duration, bpm, beatsPerMeasure),
         clef: getClefForTrack(track.notes),
       }));
 
@@ -580,7 +578,7 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     container.dataset.secondsPerMeasure = String(secondsPerMeasure);
     container.dataset.trackCount = String(enabledTracks.length);
     container.dataset.singleStaveHeight = String(singleStaveHeight);
-  }, [getCurrentFile, beatsPerMeasureProp]);
+  }, [currentFile, beatsPerMeasureProp]);
 
   // Highlight active notes and auto-scroll
   useEffect(() => {
@@ -592,8 +590,7 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     let lastScrollY = -1;
 
     const updateHighlights = () => {
-      const file = getCurrentFile();
-      if (!file) {
+      if (!currentFile) {
         animationId = requestAnimationFrame(updateHighlights);
         return;
       }
@@ -648,7 +645,7 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [getCurrentFile, getPlaybackTime, renderedHeight]);
+  }, [currentFile, getPlaybackTime, renderedHeight]);
 
   return (
     <div ref={containerRef} className={styles.container}>
