@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, StaveConnector } from 'vexflow';
+import {
+  Renderer,
+  Stave,
+  StaveNote,
+  Voice,
+  Formatter,
+  Accidental,
+  StaveConnector,
+  Beam,
+  Fraction,
+} from 'vexflow';
 import { useMidiStore } from '../../stores/midiStore';
 import type { MidiNote, MidiTrack } from '../../types/midi';
 import styles from './SheetMusic.module.css';
@@ -16,15 +26,39 @@ interface SheetMusicProps {
 function midiKeyToVexFlow(key: number, scale: number): string {
   // Major keys by number of sharps/flats
   const majorKeys: Record<string, string> = {
-    '-7': 'Cb', '-6': 'Gb', '-5': 'Db', '-4': 'Ab', '-3': 'Eb', '-2': 'Bb', '-1': 'F',
+    '-7': 'Cb',
+    '-6': 'Gb',
+    '-5': 'Db',
+    '-4': 'Ab',
+    '-3': 'Eb',
+    '-2': 'Bb',
+    '-1': 'F',
     '0': 'C',
-    '1': 'G', '2': 'D', '3': 'A', '4': 'E', '5': 'B', '6': 'F#', '7': 'C#',
+    '1': 'G',
+    '2': 'D',
+    '3': 'A',
+    '4': 'E',
+    '5': 'B',
+    '6': 'F#',
+    '7': 'C#',
   };
   // Minor keys (relative minor)
   const minorKeys: Record<string, string> = {
-    '-7': 'Ab', '-6': 'Eb', '-5': 'Bb', '-4': 'F', '-3': 'C', '-2': 'G', '-1': 'D',
+    '-7': 'Ab',
+    '-6': 'Eb',
+    '-5': 'Bb',
+    '-4': 'F',
+    '-3': 'C',
+    '-2': 'G',
+    '-1': 'D',
     '0': 'A',
-    '1': 'E', '2': 'B', '3': 'F#', '4': 'C#', '5': 'G#', '6': 'D#', '7': 'A#',
+    '1': 'E',
+    '2': 'B',
+    '3': 'F#',
+    '4': 'C#',
+    '5': 'G#',
+    '6': 'D#',
+    '7': 'A#',
   };
 
   const keyMap = scale === 1 ? minorKeys : majorKeys;
@@ -32,7 +66,10 @@ function midiKeyToVexFlow(key: number, scale: number): string {
 }
 
 /** Get which pitch classes have sharps/flats for a given MIDI key signature */
-function getKeySignatureAlterations(key: number): { sharps: Set<number>; flats: Set<number> } {
+function getKeySignatureAlterations(key: number): {
+  sharps: Set<number>;
+  flats: Set<number>;
+} {
   // Order of sharps: F C G D A E B (pitch classes: 5, 0, 7, 2, 9, 4, 11 -> mod 12 for black keys: 6, 1, 8, 3, 10)
   // Order of flats: B E A D G C F (pitch classes: 11, 4, 9, 2, 7, 0, 5 -> mod 12 for black keys: 10, 3, 8, 1, 6)
   const sharpOrder = [6, 1, 8, 3, 10, 5, 0]; // F#, C#, G#, D#, A#, E#, B#
@@ -103,14 +140,30 @@ function detectKeySignature(notes: MidiNote[]): number {
 }
 
 /** Convert MIDI note number to VexFlow note name, considering key signature */
-function midiToVexFlow(noteNumber: number, keyNum: number): { key: string; accidental?: string } {
+function midiToVexFlow(
+  noteNumber: number,
+  keyNum: number,
+): { key: string; accidental?: string } {
   const octave = Math.floor(noteNumber / 12) - 1;
   const pc = noteNumber % 12;
 
   const { sharps, flats } = getKeySignatureAlterations(keyNum);
 
   // Pitch classes: C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11
-  const naturalNames = ['c', 'c', 'd', 'd', 'e', 'f', 'f', 'g', 'g', 'a', 'a', 'b'];
+  const naturalNames = [
+    'c',
+    'c',
+    'd',
+    'd',
+    'e',
+    'f',
+    'f',
+    'g',
+    'g',
+    'a',
+    'a',
+    'b',
+  ];
   const isBlackKey = [1, 3, 6, 8, 10].includes(pc);
 
   let noteName = naturalNames[pc];
@@ -122,7 +175,20 @@ function midiToVexFlow(noteNumber: number, keyNum: number): { key: string; accid
       accidental = undefined;
     } else if (flats.has(pc)) {
       // In key signature as flat - use flat note name, no accidental
-      const flatNames = ['c', 'd', 'd', 'e', 'e', 'f', 'g', 'g', 'a', 'a', 'b', 'b'];
+      const flatNames = [
+        'c',
+        'd',
+        'd',
+        'e',
+        'e',
+        'f',
+        'g',
+        'g',
+        'a',
+        'a',
+        'b',
+        'b',
+      ];
       noteName = flatNames[pc];
       accidental = undefined;
     } else {
@@ -139,24 +205,31 @@ function midiToVexFlow(noteNumber: number, keyNum: number): { key: string; accid
 
 /** Get note duration string for VexFlow based on beats */
 function beatsToDuration(beats: number): string {
-  if (beats >= 3.5) return 'w';      // whole (4 beats)
-  if (beats >= 1.75) return 'h';     // half (2 beats)
-  if (beats >= 0.875) return 'q';    // quarter (1 beat)
-  if (beats >= 0.4375) return '8';   // eighth (0.5 beats)
+  if (beats >= 3.5) return 'w'; // whole (4 beats)
+  if (beats >= 1.75) return 'h'; // half (2 beats)
+  if (beats >= 0.875) return 'q'; // quarter (1 beat)
+  if (beats >= 0.4375) return '8'; // eighth (0.5 beats)
   if (beats >= 0.21875) return '16'; // sixteenth (0.25 beats)
-  return '32';                        // thirty-second (0.125 beats)
+  return '32'; // thirty-second (0.125 beats)
 }
 
 /** Get the beat value for a VexFlow duration */
 function durationToBeats(duration: string): number {
   switch (duration) {
-    case 'w': return 4;
-    case 'h': return 2;
-    case 'q': return 1;
-    case '8': return 0.5;
-    case '16': return 0.25;
-    case '32': return 0.125;
-    default: return 1;
+    case 'w':
+      return 4;
+    case 'h':
+      return 2;
+    case 'q':
+      return 1;
+    case '8':
+      return 0.5;
+    case '16':
+      return 0.25;
+    case '32':
+      return 0.125;
+    default:
+      return 1;
   }
 }
 
@@ -166,11 +239,11 @@ function generateRests(beats: number): string[] {
   let remaining = beats;
 
   const restValues: [string, number][] = [
-    ['h', 2],      // half
-    ['q', 1],      // quarter
-    ['8', 0.5],    // eighth
-    ['16', 0.25],  // sixteenth
-    ['32', 0.125], // thirty-second
+    ['h', 2],
+    ['q', 1],
+    ['8', 0.5],
+    ['16', 0.25],
+    ['32', 0.125],
   ];
 
   while (remaining >= 0.125) {
@@ -197,7 +270,8 @@ function getDuration(durationSeconds: number, bpm: number): string {
 /** Determine clef based on average note pitch */
 function getClefForTrack(notes: MidiNote[]): 'treble' | 'bass' {
   if (notes.length === 0) return 'treble';
-  const avgNote = notes.reduce((sum, n) => sum + n.noteNumber, 0) / notes.length;
+  const avgNote =
+    notes.reduce((sum, n) => sum + n.noteNumber, 0) / notes.length;
   return avgNote >= 60 ? 'treble' : 'bass'; // Middle C = 60
 }
 
@@ -212,7 +286,7 @@ function groupNotesIntoMeasures(
   notes: MidiNote[],
   duration: number,
   bpm: number,
-  beatsPerMeasure: number
+  beatsPerMeasure: number,
 ): Measure[] {
   // Use quarter note as the base beat (MIDI BPM is always quarter notes)
   const secondsPerBeat = 60 / bpm;
@@ -227,7 +301,8 @@ function groupNotesIntoMeasures(
     const measureNotes = notes.filter((n) => {
       // Quantize note start time to nearest 32nd note to avoid boundary issues
       const quantizeGrid = secondsPerBeat / 8; // 32nd note
-      const quantizedTime = Math.round(n.startTime / quantizeGrid) * quantizeGrid;
+      const quantizedTime =
+        Math.round(n.startTime / quantizeGrid) * quantizeGrid;
       return quantizedTime >= startTime && quantizedTime < endTime;
     });
     measures.push({ startTime, endTime, notes: measureNotes });
@@ -255,7 +330,9 @@ interface NotePosition {
   endTime: number;
 }
 
-export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicProps) {
+export function SheetMusic({
+  beatsPerMeasure: beatsPerMeasureProp,
+}: SheetMusicProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const highlightsRef = useRef<HTMLDivElement>(null);
@@ -289,7 +366,9 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     if (existingSvg) existingSvg.remove();
 
     // Get enabled tracks with notes
-    const enabledTracks = currentFile.tracks.filter(t => t.enabled && t.notes.length > 0);
+    const enabledTracks = currentFile.tracks.filter(
+      (t) => t.enabled && t.notes.length > 0,
+    );
 
     if (enabledTracks.length === 0) {
       setRenderedHeight(0);
@@ -304,22 +383,30 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     const beatValue = 4;
 
     // Get key signature from file, or detect from notes if not present
-    const allNotes = enabledTracks.flatMap(t => t.notes);
+    const allNotes = enabledTracks.flatMap((t) => t.notes);
     const fileKeyNum = currentFile.keySignature?.key ?? 0;
     const keyNum = fileKeyNum !== 0 ? fileKeyNum : detectKeySignature(allNotes);
     const keyScale = currentFile.keySignature?.scale ?? 0;
     const vexFlowKey = midiKeyToVexFlow(keyNum, keyScale);
 
     // Group each track's notes into measures
-    const trackMeasures: { track: MidiTrack; measures: Measure[]; clef: 'treble' | 'bass' }[] =
-      enabledTracks.map(track => ({
-        track,
-        measures: groupNotesIntoMeasures(track.notes, currentFile.duration, bpm, beatsPerMeasure),
-        clef: getClefForTrack(track.notes),
-      }));
+    const trackMeasures: {
+      track: MidiTrack;
+      measures: Measure[];
+      clef: 'treble' | 'bass';
+    }[] = enabledTracks.map((track) => ({
+      track,
+      measures: groupNotesIntoMeasures(
+        track.notes,
+        currentFile.duration,
+        bpm,
+        beatsPerMeasure,
+      ),
+      clef: getClefForTrack(track.notes),
+    }));
 
     // Layout constants
-    const staveWidth = 600;  // Wider staves for better proportional spacing
+    const staveWidth = 600; // Wider staves for better proportional spacing
     const stavesPerLine = 2; // Fewer measures per line = more space
     const singleStaveHeight = 80;
     const trackSpacing = 20; // Space between track groups
@@ -327,7 +414,8 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
     const topMargin = 40;
 
     // Height for one "system" (all tracks for one set of measures)
-    const systemHeight = enabledTracks.length * singleStaveHeight + trackSpacing;
+    const systemHeight =
+      enabledTracks.length * singleStaveHeight + trackSpacing;
 
     const measureCount = trackMeasures[0]?.measures.length || 0;
     const lineCount = Math.ceil(measureCount / stavesPerLine);
@@ -353,7 +441,16 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
 
       const staves: Stave[] = [];
       const voices: Voice[] = [];
-      const voiceData: { voice: Voice; stave: Stave; staveNotes: StaveNote[]; noteTimings: { startTime: number; endTime: number; staveNoteIndex: number }[] }[] = [];
+      const voiceData: {
+        voice: Voice;
+        stave: Stave;
+        staveNotes: StaveNote[];
+        noteTimings: {
+          startTime: number;
+          endTime: number;
+          staveNoteIndex: number;
+        }[];
+      }[] = [];
 
       // First pass: create all staves and voices
       trackMeasures.forEach(({ track, measures, clef }, trackIndex) => {
@@ -379,7 +476,8 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
         const secondsPerBeat = 60 / bpm;
         const noteGroups: Map<number, MidiNote[]> = new Map();
         for (const note of measure.notes) {
-          const beatInMeasure = (note.startTime - measure.startTime) / secondsPerBeat;
+          const beatInMeasure =
+            (note.startTime - measure.startTime) / secondsPerBeat;
           const quantizedBeat = Math.round(beatInMeasure * 8) / 8;
           const beatKey = Math.round(quantizedBeat * 1000);
           if (!noteGroups.has(beatKey)) {
@@ -390,7 +488,11 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
 
         // Create VexFlow notes with rests filling gaps
         const staveNotes: StaveNote[] = [];
-        const noteTimings: { startTime: number; endTime: number; staveNoteIndex: number }[] = [];
+        const noteTimings: {
+          startTime: number;
+          endTime: number;
+          staveNoteIndex: number;
+        }[] = [];
         const sortedBeatKeys = [...noteGroups.keys()].sort((a, b) => a - b);
         const trackColor = hexToRgb(track.color);
 
@@ -435,7 +537,7 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
           const rawDurationBeats = durationToBeats(rawDuration);
           const clampedBeats = Math.min(rawDurationBeats, remainingInMeasure);
           const duration = beatsToDuration(clampedBeats);
-          const maxDuration = Math.max(...notes.map(n => n.duration));
+          const maxDuration = Math.max(...notes.map((n) => n.duration));
 
           try {
             const staveNote = new StaveNote({
@@ -444,7 +546,10 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
               clef,
             });
 
-            staveNote.setStyle({ fillStyle: trackColor, strokeStyle: trackColor });
+            staveNote.setStyle({
+              fillStyle: trackColor,
+              strokeStyle: trackColor,
+            });
 
             accidentals.forEach((acc, i) => {
               if (acc) {
@@ -488,7 +593,10 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
         if (staveNotes.length === 0) return;
 
         // Create voice
-        const voice = new Voice({ numBeats: beatsPerMeasure, beatValue }).setStrict(false);
+        const voice = new Voice({
+          numBeats: beatsPerMeasure,
+          beatValue,
+        }).setStrict(false);
         voice.addTickables(staveNotes);
         voices.push(voice);
         voiceData.push({ voice, stave, staveNotes, noteTimings });
@@ -504,12 +612,21 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
           const formatter = new Formatter({ softmaxFactor: 50 });
           // Don't joinVoices - that's for same-stave voices
           // Just format all voices together for cross-stave alignment
-          voices.forEach(v => formatter.joinVoices([v]));
+          voices.forEach((v) => formatter.joinVoices([v]));
           formatter.format(voices, usableWidth);
 
-          // Draw all voices
+          // Draw all voices with beams
           voiceData.forEach(({ voice, stave, staveNotes, noteTimings }) => {
+            // Generate beams for 8th notes and shorter
+            const beams = Beam.generateBeams(staveNotes, {
+              groups: [new Fraction(2, 8)], // Group by 8th note pairs
+              maintainStemDirections: true,
+            });
+
             voice.draw(context, stave);
+
+            // Draw beams
+            beams.forEach((beam) => beam.setContext(context).draw());
 
             // Extract note positions using note head X position (not bounding box which includes accidentals)
             noteTimings.forEach((timing) => {
@@ -540,11 +657,17 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
       // Draw brace/connector for multiple tracks at start of each line
       if (posInLine === 0 && staves.length > 1) {
         try {
-          const connector = new StaveConnector(staves[0], staves[staves.length - 1]);
+          const connector = new StaveConnector(
+            staves[0],
+            staves[staves.length - 1],
+          );
           connector.setType('brace');
           connector.setContext(context).draw();
 
-          const lineConnector = new StaveConnector(staves[0], staves[staves.length - 1]);
+          const lineConnector = new StaveConnector(
+            staves[0],
+            staves[staves.length - 1],
+          );
           lineConnector.setType('singleLeft');
           lineConnector.setContext(context).draw();
         } catch {
@@ -555,7 +678,10 @@ export function SheetMusic({ beatsPerMeasure: beatsPerMeasureProp }: SheetMusicP
       // Draw bar line connector at end of each measure
       if (staves.length > 1) {
         try {
-          const endConnector = new StaveConnector(staves[0], staves[staves.length - 1]);
+          const endConnector = new StaveConnector(
+            staves[0],
+            staves[staves.length - 1],
+          );
           endConnector.setType('singleRight');
           endConnector.setContext(context).draw();
         } catch {
