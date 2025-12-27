@@ -44,6 +44,8 @@ export interface MidiFile {
   tempos: TempoChange[];
   /** Time signature */
   timeSignature: TimeSignature;
+  /** Key signature */
+  keySignature: KeySignature;
   /** All tracks */
   tracks: MidiTrack[];
   /** Raw MIDI data for export */
@@ -64,6 +66,14 @@ export interface TempoChange {
 export interface TimeSignature {
   numerator: number;
   denominator: number;
+}
+
+/** Key signature */
+export interface KeySignature {
+  /** Number of sharps (positive) or flats (negative), -7 to 7 */
+  key: number;
+  /** 0 = major, 1 = minor */
+  scale: number;
 }
 
 /** MIDI input event from hardware keyboard */

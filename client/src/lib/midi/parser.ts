@@ -5,6 +5,7 @@ import type {
   MidiNote,
   TempoChange,
   TimeSignature,
+  KeySignature,
 } from '../../types/midi';
 import { generateId, saveRawMidiData } from '../../utils/storage';
 
@@ -28,6 +29,7 @@ export function parseMidiFile(data: ArrayBuffer, fileName: string): MidiFile {
   const ticksPerBeat = parsed.header.ticksPerBeat || 480;
   const tempos = extractTempos(parsed, ticksPerBeat);
   const timeSignature = extractTimeSignature(parsed);
+  const keySignature = extractKeySignature(parsed);
   const tracks = extractTracks(parsed, ticksPerBeat, tempos);
   const duration = calculateDuration(tracks);
 
@@ -43,6 +45,7 @@ export function parseMidiFile(data: ArrayBuffer, fileName: string): MidiFile {
     ticksPerBeat,
     tempos,
     timeSignature,
+    keySignature,
     tracks,
     lastModified: Date.now(),
   };
@@ -109,6 +112,21 @@ function extractTimeSignature(midi: MidiData): TimeSignature {
     }
   }
   return { numerator: 4, denominator: 4 }; // Default 4/4
+}
+
+/** Extract key signature from MIDI data */
+function extractKeySignature(midi: MidiData): KeySignature {
+  for (const track of midi.tracks) {
+    for (const event of track) {
+      if (event.type === 'keySignature') {
+        return {
+          key: (event as any).key,    // -7 to 7 (flats to sharps)
+          scale: (event as any).scale, // 0 = major, 1 = minor
+        };
+      }
+    }
+  }
+  return { key: 0, scale: 0 }; // Default C major
 }
 
 /** Convert ticks to seconds using tempo map */
@@ -278,6 +296,7 @@ export function createEmptyMidiFile(name: string): MidiFile {
     ticksPerBeat: 480,
     tempos: [{ time: 0, bpm: 120 }],
     timeSignature: { numerator: 4, denominator: 4 },
+    keySignature: { key: 0, scale: 0 },
     tracks: [
       {
         index: 0,

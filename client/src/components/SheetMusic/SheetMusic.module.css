@@ -3,11 +3,14 @@
   inset: 0;
   overflow: auto;
   background: var(--canvas-bg);
+  display: flex;
+  justify-content: center;
 }
 
 .svgContainer {
   position: relative;
   min-height: 100%;
+  flex-shrink: 0;
 }
 
 .svgContainer svg {
@@ -34,13 +37,17 @@
   fill: var(--text-primary);
 }
 
-.progressLine {
+.highlights {
   position: absolute;
-  width: 2px;
-  background: var(--ctp-red);
-  opacity: 0.8;
+  inset: 0;
   pointer-events: none;
   z-index: 10;
-  box-shadow: 0 0 8px var(--ctp-red);
-  transition: left 0.05s linear;
+}
+
+.noteHighlight {
+  position: absolute;
+  background: var(--ctp-red);
+  opacity: 0.25;
+  border-radius: 4px;
+  box-shadow: 0 0 12px var(--ctp-red);
 }
