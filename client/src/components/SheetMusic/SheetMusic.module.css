@@ -33,8 +33,21 @@
 }
 
 .svgContainer :global(.vf-clef),
-.svgContainer :global(.vf-timesig) {
+.svgContainer :global(.vf-timesig),
+.svgContainer :global(.vf-keysig),
+.svgContainer :global(.vf-accidental) {
   fill: var(--text-primary);
+}
+
+/* Ensure all text elements in VexFlow use theme color */
+.svgContainer :global(text) {
+  fill: var(--text-primary);
+}
+
+/* Key signature accidentals */
+.svgContainer :global(.vf-keysig) path {
+  fill: var(--text-primary);
+  stroke: var(--text-primary);
 }
 
 .highlights {

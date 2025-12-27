@@ -3,6 +3,7 @@ import {
   Renderer,
   Stave,
   StaveNote,
+  GhostNote,
   Voice,
   Formatter,
   Accidental,
@@ -260,6 +261,134 @@ function generateRests(beats: number): string[] {
   return rests;
 }
 
+/**
+ * Get VexFlow beam groupings based on time signature.
+ *
+ * Music notation rules:
+ * - Only 8th notes or shorter can be beamed
+ * - "A new beam = a new beat" - beam notes within the same beat
+ * - Never beam across bar lines
+ * - Never beam across the center of a measure (critical in 4/4)
+ */
+function getBeamGroupsForTimeSignature(
+  beatsPerMeasure: number,
+  beatValue: number,
+): Fraction[] {
+  // Compound meters (6/8, 9/8, 12/8) - beam in groups of 3 eighth notes
+  if (beatValue === 8 && beatsPerMeasure % 3 === 0) {
+    const numGroups = beatsPerMeasure / 3;
+    return Array(numGroups)
+      .fill(null)
+      .map(() => new Fraction(3, 8));
+  }
+
+  // Simple meters - beam based on beat structure
+  switch (beatValue) {
+    case 4: // Quarter note beats
+      switch (beatsPerMeasure) {
+        case 4: // 4/4 - Two groups of 4 eighths (beats 1-2 and 3-4, NEVER across center)
+          return [new Fraction(4, 8), new Fraction(4, 8)];
+        case 3: // 3/4 - Three groups of 2 eighths
+          return [new Fraction(2, 8), new Fraction(2, 8), new Fraction(2, 8)];
+        case 2: // 2/4 - One group of 4 eighths
+          return [new Fraction(4, 8)];
+        case 6: // 6/4 - Two groups of 6 eighths
+          return [new Fraction(6, 8), new Fraction(6, 8)];
+        default:
+          // Default to 2 eighths per beat
+          return Array(beatsPerMeasure)
+            .fill(null)
+            .map(() => new Fraction(2, 8));
+      }
+    case 8: // Eighth note beats (simple, not compound - e.g., 5/8, 7/8)
+      if (beatsPerMeasure === 5) {
+        return [new Fraction(3, 8), new Fraction(2, 8)];
+      }
+      if (beatsPerMeasure === 7) {
+        return [new Fraction(2, 8), new Fraction(2, 8), new Fraction(3, 8)];
+      }
+      // Default grouping for other 8th note meters
+      return [new Fraction(beatsPerMeasure, 8)];
+    case 2: // Half note beats (2/2, 3/2, etc.)
+      // Beam in groups of 4 eighths per half-note beat
+      return Array(beatsPerMeasure)
+        .fill(null)
+        .map(() => new Fraction(4, 8));
+    case 16: // Sixteenth note beats
+      return [new Fraction(beatsPerMeasure, 16)];
+    default:
+      // Fallback: 2 eighths per beat
+      return [new Fraction(2, 8)];
+  }
+}
+
+/**
+ * Calculate note density to determine optimal measures per line.
+ * Denser music (more 16th notes) needs fewer measures per line.
+ * Sparser music (whole/half notes) can have more measures per line.
+ *
+ * @returns Density factor (< 1 for dense, > 1 for sparse, 1 for normal)
+ */
+function calculateNoteDensity(notes: MidiNote[], bpm: number): number {
+  if (notes.length === 0) return 1;
+
+  const beatsPerSecond = bpm / 60;
+
+  // Count notes by duration category
+  let shortNotes = 0; // 16th notes and shorter (< 0.375 beats)
+  let normalNotes = 0; // 8th and quarter notes (0.375 - 1.5 beats)
+  let longNotes = 0; // Half notes and longer (> 1.5 beats)
+
+  for (const note of notes) {
+    const beats = note.duration * beatsPerSecond;
+    if (beats < 0.375) {
+      shortNotes++;
+    } else if (beats > 1.5) {
+      longNotes++;
+    } else {
+      normalNotes++;
+    }
+  }
+
+  const total = shortNotes + normalNotes + longNotes;
+  if (total === 0) return 1;
+
+  // Calculate density factor:
+  // - High proportion of short notes = lower factor (fewer measures per line)
+  // - High proportion of long notes = higher factor (more measures per line)
+  const shortRatio = shortNotes / total;
+  const longRatio = longNotes / total;
+  const densityFactor = 1 - shortRatio * 0.5 + longRatio * 0.5;
+
+  return Math.max(0.5, Math.min(1.5, densityFactor));
+}
+
+/**
+ * Calculate optimal number of measures per line based on time signature and note density.
+ *
+ * Standard rules:
+ * - 4-8 measures per line is standard
+ * - Dense music (16th notes): 2-3 measures per line
+ * - Sparse music (whole/half notes): up to 10-12 measures per line
+ * - Target ~16 quarter notes of content per line as baseline
+ */
+function calculateMeasuresPerLine(
+  quarterNotesPerMeasure: number,
+  densityFactor: number,
+): number {
+  // Target ~16 quarter notes worth of content per line (4 measures for 4/4)
+  const targetQuarterNotesPerLine = 16;
+
+  // Base calculation: how many measures to reach target
+  const baseMeasures = targetQuarterNotesPerLine / quarterNotesPerMeasure;
+
+  // Adjust for note density
+  const adjustedMeasures = baseMeasures * densityFactor;
+
+  // Clamp to reasonable range: 2-6 measures per line
+  return Math.max(2, Math.min(6, Math.round(adjustedMeasures)));
+}
+
 /** Get note duration string for VexFlow */
 function getDuration(durationSeconds: number, bpm: number): string {
   const beatsPerSecond = bpm / 60;
@@ -287,9 +416,13 @@ function groupNotesIntoMeasures(
   duration: number,
   bpm: number,
   beatsPerMeasure: number,
+  beatValue: number = 4,
 ): Measure[] {
-  // Use quarter note as the base beat (MIDI BPM is always quarter notes)
-  const secondsPerBeat = 60 / bpm;
+  // MIDI BPM is always based on quarter notes
+  const secondsPerQuarterNote = 60 / bpm;
+  // Adjust for beat value: beatValue=4 means quarter note beats, beatValue=8 means eighth note beats
+  // One beat of the given value = (4 / beatValue) quarter notes
+  const secondsPerBeat = secondsPerQuarterNote * (4 / beatValue);
   const secondsPerMeasure = secondsPerBeat * beatsPerMeasure;
   const measureCount = Math.ceil(duration / secondsPerMeasure);
   const measures: Measure[] = [];
@@ -330,6 +463,73 @@ interface NotePosition {
   endTime: number;
 }
 
+/**
+ * Normalize unusual MIDI time signatures to standard notation.
+ * Many MIDI files have incorrectly encoded denominators (e.g., 4/16 instead of 4/4).
+ * This function normalizes them to practical values for sheet music display.
+ */
+function normalizeTimeSignature(
+  numerator: number,
+  denominator: number,
+): { numerator: number; denominator: number } {
+  // Many MIDI files have incorrectly encoded time signatures.
+  // The MIDI spec stores denominator as a power of 2, so:
+  //   denominator=2 means 2^2=4 (quarter notes) - CORRECT for 4/4
+  //   denominator=4 means 2^4=16 (sixteenth notes) - WRONG, often meant to be 4/4
+  //
+  // Common encoding errors to fix:
+  //   4/16 → 4/4 (most common error)
+  //   3/16 → 3/4
+  //   6/16 → 6/8 (compound meter)
+  //   2/16 → 2/4
+  //   1/256 → likely encoding garbage
+
+  let normNum = numerator;
+  let normDenom = denominator;
+
+  // Fix x/16 which is almost always an encoding error
+  // Real x/16 time signatures are extremely rare in practice
+  if (normDenom === 16) {
+    // Check for compound meter patterns (divisible by 3) → convert to /8
+    if (normNum % 3 === 0 && normNum >= 6) {
+      normDenom = 8; // 6/16 → 6/8, 9/16 → 9/8, 12/16 → 12/8
+    } else {
+      normDenom = 4; // 4/16 → 4/4, 3/16 → 3/4, 2/16 → 2/4
+    }
+  }
+
+  // Fix very large denominators (32, 64, 128, 256...)
+  // These are almost certainly encoding errors
+  while (normDenom > 16) {
+    if (normNum % 2 === 0 && normNum > 1) {
+      normNum = normNum / 2;
+    }
+    normDenom = normDenom / 2;
+  }
+
+  // After normalization, fix any remaining /16 from the division
+  if (normDenom === 16) {
+    if (normNum % 3 === 0 && normNum >= 6) {
+      normDenom = 8;
+    } else {
+      normDenom = 4;
+    }
+  }
+
+  // Ensure denominator is a power of 2 (1, 2, 4, 8)
+  const validDenominators = [1, 2, 4, 8];
+  if (!validDenominators.includes(normDenom)) {
+    normDenom = validDenominators.reduce((prev, curr) =>
+      Math.abs(curr - normDenom) < Math.abs(prev - normDenom) ? curr : prev
+    );
+  }
+
+  // Ensure numerator is at least 1
+  normNum = Math.max(1, Math.round(normNum));
+
+  return { numerator: normNum, denominator: normDenom };
+}
+
 export function SheetMusic({
   beatsPerMeasure: beatsPerMeasureProp,
 }: SheetMusicProps) {
@@ -341,10 +541,11 @@ export function SheetMusic({
   // Store note positions for highlighting
   const notePositionsRef = useRef<NotePosition[]>([]);
 
-  // Subscribe to current file for re-rendering when file changes
+  // Subscribe to current file and theme for re-rendering
   const currentFileId = useMidiStore((state) => state.currentFileId);
   const files = useMidiStore((state) => state.files);
   const currentFile = files.find((f) => f.id === currentFileId) || null;
+  const theme = useMidiStore((state) => state.settings.theme);
 
   const getPlaybackTime = useCallback(() => {
     return useMidiStore.getState().playback.currentTime;
@@ -378,9 +579,15 @@ export function SheetMusic({
     // Get tempo (use first tempo or default)
     const bpm = currentFile.tempos.length > 0 ? currentFile.tempos[0].bpm : 120;
 
-    // Get time signature from file or use prop override (default to 4/4)
-    const beatsPerMeasure = beatsPerMeasureProp ?? 4;
-    const beatValue = 4;
+    // Get time signature from file, normalize unusual denominators
+    const rawTimeSignature = currentFile.timeSignature ?? { numerator: 4, denominator: 4 };
+    const normalizedTimeSignature = normalizeTimeSignature(
+      rawTimeSignature.numerator,
+      rawTimeSignature.denominator,
+    );
+    // Allow prop override for beats per measure, otherwise use file's time signature
+    const beatsPerMeasure = beatsPerMeasureProp ?? normalizedTimeSignature.numerator;
+    const beatValue = normalizedTimeSignature.denominator;
 
     // Get key signature from file, or detect from notes if not present
     const allNotes = enabledTracks.flatMap((t) => t.notes);
@@ -401,16 +608,25 @@ export function SheetMusic({
         currentFile.duration,
         bpm,
         beatsPerMeasure,
+        beatValue,
       ),
       clef: getClefForTrack(track.notes),
     }));
 
-    // Layout constants
-    const staveWidth = 600; // Wider staves for better proportional spacing
-    const stavesPerLine = 2; // Fewer measures per line = more space
+    // Calculate quarter notes per measure for layout scaling
+    // e.g., 4/4 = 4, 3/4 = 3, 6/8 = 3, 2/4 = 2
+    const quarterNotesPerMeasure = beatsPerMeasure * (4 / beatValue);
+
+    // Calculate note density and optimal measures per line
+    const densityFactor = calculateNoteDensity(allNotes, bpm);
+    const stavesPerLine = calculateMeasuresPerLine(quarterNotesPerMeasure, densityFactor);
+
+    // Adjust stave width to fill available space (aim for ~1200px total width)
+    const totalWidth = 1200;
+    const leftMargin = 10;
+    const staveWidth = Math.floor((totalWidth - leftMargin * 2) / stavesPerLine);
     const singleStaveHeight = 80;
     const trackSpacing = 20; // Space between track groups
-    const leftMargin = 10;
     const topMargin = 40;
 
     // Height for one "system" (all tracks for one set of measures)
@@ -429,6 +645,12 @@ export function SheetMusic({
     const context = renderer.getContext();
     context.setFont('Arial', 10);
 
+    // Set theme-aware colors for notation elements
+    const textColor = theme === 'latte' ? '#4c4f69' : '#cdd6f4';
+    const staffColor = theme === 'latte' ? '#5c5f77' : '#a6adc8';
+    context.setFillStyle(textColor);
+    context.setStrokeStyle(staffColor);
+
     // Collect note positions for highlighting
     const notePositions: NotePosition[] = [];
 
@@ -444,7 +666,7 @@ export function SheetMusic({
       const voiceData: {
         voice: Voice;
         stave: Stave;
-        staveNotes: StaveNote[];
+        staveNotes: (StaveNote | GhostNote)[];
         noteTimings: {
           startTime: number;
           endTime: number;
@@ -462,7 +684,10 @@ export function SheetMusic({
         if (posInLine === 0) {
           stave.addClef(clef);
           stave.addKeySignature(vexFlowKey);
-          stave.addTimeSignature(`${beatsPerMeasure}/${beatValue}`);
+          // Only show time signature on the first line
+          if (lineIndex === 0) {
+            stave.addTimeSignature(`${beatsPerMeasure}/${beatValue}`);
+          }
         }
         stave.setContext(context).draw();
         staves.push(stave);
@@ -473,12 +698,14 @@ export function SheetMusic({
         }
 
         // Group simultaneous notes (chords) by their beat position
-        const secondsPerBeat = 60 / bpm;
+        // Use quarter notes as the internal beat unit (matches MIDI BPM and VexFlow durations)
+        const secondsPerQuarterNote = 60 / bpm;
+        // quarterNotesPerMeasure is defined in outer scope (e.g., 6/8 = 3 quarter notes)
         const noteGroups: Map<number, MidiNote[]> = new Map();
         for (const note of measure.notes) {
-          const beatInMeasure =
-            (note.startTime - measure.startTime) / secondsPerBeat;
-          const quantizedBeat = Math.round(beatInMeasure * 8) / 8;
+          const quarterBeatInMeasure =
+            (note.startTime - measure.startTime) / secondsPerQuarterNote;
+          const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
           const beatKey = Math.round(quantizedBeat * 1000);
           if (!noteGroups.has(beatKey)) {
             noteGroups.set(beatKey, []);
@@ -486,8 +713,8 @@ export function SheetMusic({
           noteGroups.get(beatKey)!.push(note);
         }
 
-        // Create VexFlow notes with rests filling gaps
-        const staveNotes: StaveNote[] = [];
+        // Create VexFlow notes with ghost notes filling gaps (for spacing)
+        const staveNotes: (StaveNote | GhostNote)[] = [];
         const noteTimings: {
           startTime: number;
           endTime: number;
@@ -502,22 +729,19 @@ export function SheetMusic({
           const noteBeat = beatKey / 1000;
           const notes = noteGroups.get(beatKey)!;
 
-          if (noteBeat >= beatsPerMeasure) continue;
+          if (noteBeat >= quarterNotesPerMeasure) continue;
 
-          // Add rests to fill gap before this note
+          // Add invisible ghost notes to fill gap before this note (for proper spacing)
           const gap = noteBeat - currentBeat;
           if (gap >= 0.125) {
             const restDurations = generateRests(gap);
             for (const restDur of restDurations) {
               try {
-                const restNote = new StaveNote({
-                  keys: [clef === 'bass' ? 'd/3' : 'b/4'],
-                  duration: restDur,
-                  clef,
-                });
-                staveNotes.push(restNote);
+                // Use GhostNote instead of visible rest - takes up space but doesn't render
+                const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
+                staveNotes.push(ghostNote);
               } catch {
-                // Skip rests that can't be rendered
+                // Skip notes that can't be created
               }
             }
           }
@@ -532,7 +756,7 @@ export function SheetMusic({
             accidentals.push(accidental);
           }
 
-          const remainingInMeasure = beatsPerMeasure - noteBeat;
+          const remainingInMeasure = quarterNotesPerMeasure - noteBeat;
           const rawDuration = getDuration(notes[0].duration, bpm);
           const rawDurationBeats = durationToBeats(rawDuration);
           const clampedBeats = Math.min(rawDurationBeats, remainingInMeasure);
@@ -544,6 +768,7 @@ export function SheetMusic({
               keys,
               duration,
               clef,
+              autoStem: true, // Automatically flip stems based on note position
             });
 
             staveNote.setStyle({
@@ -571,20 +796,17 @@ export function SheetMusic({
         }
 
         // Add trailing rests to fill measure
-        if (currentBeat < beatsPerMeasure) {
-          const gap = beatsPerMeasure - currentBeat;
+        if (currentBeat < quarterNotesPerMeasure) {
+          const gap = quarterNotesPerMeasure - currentBeat;
           if (gap >= 0.125) {
             const restDurations = generateRests(gap);
             for (const restDur of restDurations) {
               try {
-                const restNote = new StaveNote({
-                  keys: [clef === 'bass' ? 'd/3' : 'b/4'],
-                  duration: restDur,
-                  clef,
-                });
-                staveNotes.push(restNote);
+                // Use GhostNote instead of visible rest - takes up space but doesn't render
+                const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
+                staveNotes.push(ghostNote);
               } catch {
-                // Skip rests that can't be rendered
+                // Skip notes that can't be created
               }
             }
           }
@@ -617,9 +839,10 @@ export function SheetMusic({
 
           // Draw all voices with beams
           voiceData.forEach(({ voice, stave, staveNotes, noteTimings }) => {
-            // Generate beams for 8th notes and shorter
+            // Generate beams for 8th notes and shorter, using time-signature-aware groupings
+            const beamGroups = getBeamGroupsForTimeSignature(beatsPerMeasure, beatValue);
             const beams = Beam.generateBeams(staveNotes, {
-              groups: [new Fraction(2, 8)], // Group by 8th note pairs
+              groups: beamGroups,
               maintainStemDirections: true,
             });
 
@@ -694,7 +917,8 @@ export function SheetMusic({
     notePositionsRef.current = notePositions;
 
     // Store layout info for progress tracking
-    const secondsPerMeasure = (60 / bpm) * beatsPerMeasure;
+    // Calculate seconds per measure: (seconds per quarter note) * (quarter notes per measure)
+    const secondsPerMeasure = (60 / bpm) * beatsPerMeasure * (4 / beatValue);
     container.dataset.measureCount = String(measureCount);
     container.dataset.stavesPerLine = String(stavesPerLine);
     container.dataset.staveWidth = String(staveWidth);
@@ -704,7 +928,7 @@ export function SheetMusic({
     container.dataset.secondsPerMeasure = String(secondsPerMeasure);
     container.dataset.trackCount = String(enabledTracks.length);
     container.dataset.singleStaveHeight = String(singleStaveHeight);
-  }, [currentFile, beatsPerMeasureProp]);
+  }, [currentFile, beatsPerMeasureProp, theme]);
 
   // Highlight active notes and auto-scroll
   useEffect(() => {
