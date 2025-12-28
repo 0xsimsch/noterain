@@ -111,6 +111,9 @@ export interface PlaybackState {
 /** Theme options */
 export type Theme = 'mocha' | 'latte';
 
+/** Note coloring mode */
+export type NoteColorMode = 'track' | 'pitch';
+
 /** App settings */
 export interface Settings {
   /** Master volume (0-1) */
@@ -131,6 +134,8 @@ export interface Settings {
   scrollSpeed: number;
   /** Color theme */
   theme: Theme;
+  /** How to color notes */
+  noteColorMode: NoteColorMode;
 }
 
 /** Default settings */
@@ -144,7 +149,29 @@ export const DEFAULT_SETTINGS: Settings = {
   metronomeEnabled: false,
   scrollSpeed: 1,
   theme: 'mocha',
+  noteColorMode: 'track',
 };
+
+/** Colors for each pitch class (C, C#, D, ... B) - distinct rainbow spectrum */
+export const PITCH_COLORS: readonly string[] = [
+  '#ff0000', // C  - red
+  '#ff7700', // C# - orange
+  '#ffdd00', // D  - yellow
+  '#88dd00', // D# - yellow-green
+  '#00cc44', // E  - green
+  '#00ccaa', // F  - teal
+  '#00aaff', // F# - cyan
+  '#0055ff', // G  - blue
+  '#5500ff', // G# - indigo
+  '#aa00ff', // A  - violet
+  '#ff00aa', // A# - magenta
+  '#ff0066', // B  - rose
+] as const;
+
+/** Get color for a note based on its pitch class */
+export function getPitchColor(noteNumber: number): string {
+  return PITCH_COLORS[noteNumber % 12];
+}
 
 /** Note name utilities */
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;

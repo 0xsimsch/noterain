@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Application, Graphics, Container } from 'pixi.js';
 import { useMidiStore, getVisibleNotes } from '../../stores/midiStore';
-import { PIANO_MIN_NOTE, PIANO_MAX_NOTE, isBlackKey } from '../../types/midi';
+import { PIANO_MIN_NOTE, PIANO_MAX_NOTE, isBlackKey, getPitchColor } from '../../types/midi';
 
 interface FallingNotesProps {
   /** How many seconds of notes to show ahead */
@@ -232,9 +232,15 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         console.log('[FallingNotes] First note position - timeUntilNote:', timeUntilNote.toFixed(3), 'y:', y.toFixed(1), 'h:', h.toFixed(1), 'pixelsPerSecond:', pixelsPerSecond.toFixed(1));
       }
 
-      // Get color from track
-      const track = file.tracks.find((t) => t.index === note.track);
-      const color = track?.color || (note.noteNumber < 60 ? settings.leftHandColor : settings.rightHandColor);
+      // Get color based on color mode
+      let color: string;
+      if (settings.noteColorMode === 'pitch') {
+        color = getPitchColor(note.noteNumber);
+      } else {
+        // Track mode: use track color or hand-based fallback
+        const track = file.tracks.find((t) => t.index === note.track);
+        color = track?.color || (note.noteNumber < 60 ? settings.leftHandColor : settings.rightHandColor);
+      }
 
       // Convert hex color to number
       const colorNum = parseInt(color.replace('#', ''), 16);
@@ -266,8 +272,8 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
     }
   // Note: getCurrentFile and playback.currentTime are read via getState()
   // to avoid recreating this callback and to always get fresh data
-   
-  }, [lookahead, settings.leftHandColor, settings.rightHandColor]);
+
+  }, [lookahead, settings.leftHandColor, settings.rightHandColor, settings.noteColorMode]);
 
   // Keep ref updated with latest renderNotes
   renderNotesRef.current = renderNotes;

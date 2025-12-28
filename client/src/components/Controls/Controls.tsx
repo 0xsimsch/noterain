@@ -151,6 +151,27 @@ export function Controls() {
         </button>
       </div>
 
+      {/* Note color mode toggle (only for falling notes view) */}
+      {!settings.showSheetMusic && (
+        <div className={styles.section}>
+          <label className={styles.label}>Colors:</label>
+          <button
+            className={`${styles.button} ${settings.noteColorMode === 'track' ? styles.active : ''}`}
+            onClick={() => updateSettings({ noteColorMode: 'track' })}
+            title="Color notes by track"
+          >
+            Track
+          </button>
+          <button
+            className={`${styles.button} ${settings.noteColorMode === 'pitch' ? styles.active : ''}`}
+            onClick={() => updateSettings({ noteColorMode: 'pitch' })}
+            title="Color notes by pitch (C, D, E, etc.)"
+          >
+            Pitch
+          </button>
+        </div>
+      )}
+
       {/* Audio toggle */}
       <div className={styles.section}>
         <label className={styles.checkboxLabel}>
