@@ -14,6 +14,8 @@ export function usePlayback() {
     toggleWaitMode,
     setActiveNotes,
     getCurrentFile,
+    clearSatisfiedWaitNotes,
+    pruneStatisfiedWaitNotes,
   } = useMidiStore();
 
   const { playNote, stopAll, resumeAudio } = useAudioEngine();
@@ -44,7 +46,10 @@ export function usePlayback() {
       return;
     }
 
-    console.log('[Playback] Starting playback loop, file duration:', initialFile.duration);
+    console.log(
+      '[Playback] Starting playback loop, file duration:',
+      initialFile.duration,
+    );
     lastTimeRef.current = performance.now();
     // Initialize currentTimeRef from store
     currentTimeRef.current = useMidiStore.getState().playback.currentTime;
@@ -67,6 +72,7 @@ export function usePlayback() {
       if (Math.abs(storeTime - currentTimeRef.current) > 0.1) {
         currentTimeRef.current = storeTime;
         scheduledNotesRef.current.clear(); // Clear scheduled notes on seek
+        clearSatisfiedWaitNotes(); // Clear satisfied notes on seek
       }
 
       // Calculate new time using ref (not stale closure)
@@ -75,11 +81,6 @@ export function usePlayback() {
       const prevTime = currentTimeRef.current;
       const newTime = prevTime + deltaSeconds;
       currentTimeRef.current = newTime;
-
-      // Debug log every ~60 frames (roughly once per second at 60fps)
-      if (Math.random() < 0.016) {
-        console.log('[Playback] tick - deltaMs:', deltaMs.toFixed(2), 'newTime:', newTime.toFixed(3), 'speed:', speed);
-      }
 
       // Check if we've reached the end
       if (newTime >= file.duration) {
@@ -93,9 +94,16 @@ export function usePlayback() {
 
       // Wait mode: don't advance time until user plays the required notes
       if (state.playback.waitMode && activeNotes.length > 0) {
-        const requiredNotes = new Set(activeNotes.map((n) => n.noteNumber));
-        const liveNotes = state.liveNotes;
-        const allPlayed = [...requiredNotes].every((note) => liveNotes.has(note));
+        const requiredNotes = activeNotes.map((n) => n.noteNumber);
+
+        // Remove satisfied notes that are no longer required
+        pruneStatisfiedWaitNotes(requiredNotes);
+
+        // Re-read state after pruning
+        const satisfiedNotes = useMidiStore.getState().satisfiedWaitNotes;
+        const allPlayed = requiredNotes.every((note) =>
+          satisfiedNotes.has(note),
+        );
 
         if (!allPlayed) {
           // Don't advance time - keep currentTimeRef at prevTime
@@ -104,6 +112,7 @@ export function usePlayback() {
           animationFrameRef.current = requestAnimationFrame(tick);
           return;
         }
+        // All notes were played - continue advancing
       }
 
       // Find newly started notes
@@ -120,7 +129,6 @@ export function usePlayback() {
             !scheduledNotesRef.current.has(noteKey)
           ) {
             scheduledNotesRef.current.add(noteKey);
-            console.log('[Playback] Playing note:', note.noteNumber, 'at time:', note.startTime.toFixed(3));
             playNote(note.noteNumber, note.velocity, note.duration);
           }
 
@@ -147,7 +155,6 @@ export function usePlayback() {
     };
     // Note: playback.currentTime and playback.speed are intentionally excluded -
     // they're read via useMidiStore.getState() inside tick() to avoid stale closures
-     
   }, [
     playback.isPlaying,
     getCurrentFile,
@@ -156,6 +163,8 @@ export function usePlayback() {
     seek,
     setActiveNotes,
     playNote,
+    clearSatisfiedWaitNotes,
+    pruneStatisfiedWaitNotes,
   ]);
 
   // Reset scheduled notes when stopping
@@ -165,10 +174,12 @@ export function usePlayback() {
     }
   }, [playback.isPlaying]);
 
-
   /** Toggle play/pause */
   const togglePlay = useCallback(async () => {
-    console.log('[Playback] togglePlay called, current isPlaying:', playback.isPlaying);
+    console.log(
+      '[Playback] togglePlay called, current isPlaying:',
+      playback.isPlaying,
+    );
     await resumeAudio();
 
     if (playback.isPlaying) {
@@ -185,7 +196,8 @@ export function usePlayback() {
   const handleStop = useCallback(() => {
     stopAll();
     stop();
-  }, [stop, stopAll]);
+    clearSatisfiedWaitNotes();
+  }, [stop, stopAll, clearSatisfiedWaitNotes]);
 
   /** Seek to position (0-1) */
   const seekToPercent = useCallback(
@@ -194,7 +206,7 @@ export function usePlayback() {
       if (!file) return;
       seek(file.duration * Math.max(0, Math.min(1, percent)));
     },
-    [getCurrentFile, seek]
+    [getCurrentFile, seek],
   );
 
   /** Get current progress (0-1) */

@@ -35,6 +35,7 @@ export function useMidiInput() {
     selectInput,
     setLiveNote,
     clearLiveNotes,
+    addSatisfiedWaitNote,
   } = useMidiStore();
 
   // Track device IDs present at startup (to detect newly connected ones)
@@ -165,6 +166,7 @@ export function useMidiInput() {
     const handleNoteOn = (e: NoteMessageEvent) => {
       console.log('[MidiInput] Note ON:', e.note.name + e.note.octave, '(', e.note.number, ') velocity:', e.note.attack);
       setLiveNote(e.note.number, true);
+      addSatisfiedWaitNote(e.note.number);
     };
 
     const handleNoteOff = (e: NoteMessageEvent) => {
@@ -180,7 +182,7 @@ export function useMidiInput() {
       input.removeListener('noteoff', handleNoteOff);
       clearLiveNotes();
     };
-  }, [isWebMidiReady, selectedInputId, setLiveNote, clearLiveNotes]);
+  }, [isWebMidiReady, selectedInputId, setLiveNote, clearLiveNotes, addSatisfiedWaitNote]);
 
   // Get available inputs (filter out virtual devices)
   const inputs = devices.filter(

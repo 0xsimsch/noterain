@@ -1,7 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Application, Graphics, Container } from 'pixi.js';
 import { useMidiStore, getVisibleNotes } from '../../stores/midiStore';
-import { PIANO_MIN_NOTE, PIANO_MAX_NOTE, isBlackKey, getPitchColor } from '../../types/midi';
+import {
+  PIANO_MIN_NOTE,
+  PIANO_MAX_NOTE,
+  isBlackKey,
+  getPitchColor,
+} from '../../types/midi';
 
 interface FallingNotesProps {
   /** How many seconds of notes to show ahead */
@@ -46,7 +51,9 @@ function drawGrid(app: Application, graphics: Graphics, theme: string) {
   for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
     if (isBlackKey(note)) {
       const { x, width: noteWidth } = getNoteX(note);
-      graphics.rect(x * width, 0, noteWidth * width, height).fill({ color: blackKeyBg, alpha: 0.5 });
+      graphics
+        .rect(x * width, 0, noteWidth * width, height)
+        .fill({ color: blackKeyBg, alpha: 0.5 });
     }
   }
 
@@ -62,7 +69,10 @@ function drawGrid(app: Application, graphics: Graphics, theme: string) {
   for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
     if (!isBlackKey(note)) {
       const x = whiteKeyIndex * whiteKeyWidth;
-      graphics.moveTo(x, 0).lineTo(x, height).stroke({ color: lineColor, width: 1, alpha: 0.7 });
+      graphics
+        .moveTo(x, 0)
+        .lineTo(x, height)
+        .stroke({ color: lineColor, width: 1, alpha: 0.7 });
       whiteKeyIndex++;
     }
   }
@@ -176,15 +186,11 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
 
     if (!app || !notesContainer || !file) {
       // Debug log only occasionally to avoid spam
-      if (Math.random() < 0.01) {
-        console.log('[FallingNotes] renderNotes skipped - app:', !!app, 'container:', !!notesContainer, 'file:', !!file);
-      }
       return;
     }
 
     const { width, height: canvasHeight } = app.screen;
     if (width === 0 || canvasHeight === 0) {
-      console.log('[FallingNotes] Canvas has zero dimensions');
       return;
     }
 
@@ -193,11 +199,6 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
 
     // Get visible notes
     const visibleNotes = getVisibleNotes(file, currentTime, lookahead);
-
-    // Debug log every ~60 frames
-    if (Math.random() < 0.016) {
-      console.log('[FallingNotes] renderNotes - currentTime:', currentTime.toFixed(3), 'visibleNotes:', visibleNotes.length, 'canvasHeight:', canvasHeight);
-    }
 
     // Track which notes are still visible
     const visibleNoteKeys = new Set<string>();
@@ -224,13 +225,9 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
 
       // Y position: notes fall from top (future) to bottom (current time)
       const timeUntilNote = note.startTime - currentTime;
-      const y = canvasHeight - (timeUntilNote + note.duration) * pixelsPerSecond;
+      const y =
+        canvasHeight - (timeUntilNote + note.duration) * pixelsPerSecond;
       const h = note.duration * pixelsPerSecond;
-
-      // Debug first note position occasionally
-      if (Math.random() < 0.002 && visibleNotes.indexOf(note) === 0) {
-        console.log('[FallingNotes] First note position - timeUntilNote:', timeUntilNote.toFixed(3), 'y:', y.toFixed(1), 'h:', h.toFixed(1), 'pixelsPerSecond:', pixelsPerSecond.toFixed(1));
-      }
 
       // Get color based on color mode
       let color: string;
@@ -239,14 +236,20 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
       } else {
         // Track mode: use track color or hand-based fallback
         const track = file.tracks.find((t) => t.index === note.track);
-        color = track?.color || (note.noteNumber < 60 ? settings.leftHandColor : settings.rightHandColor);
+        color =
+          track?.color ||
+          (note.noteNumber < 60
+            ? settings.leftHandColor
+            : settings.rightHandColor);
       }
 
       // Convert hex color to number
       const colorNum = parseInt(color.replace('#', ''), 16);
 
       // Check if note is currently active (being played)
-      const isActive = note.startTime <= currentTime && note.startTime + note.duration > currentTime;
+      const isActive =
+        note.startTime <= currentTime &&
+        note.startTime + note.duration > currentTime;
 
       // Draw the note
       graphics.clear();
@@ -270,10 +273,14 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         noteGraphicsRef.current.delete(key);
       }
     }
-  // Note: getCurrentFile and playback.currentTime are read via getState()
-  // to avoid recreating this callback and to always get fresh data
-
-  }, [lookahead, settings.leftHandColor, settings.rightHandColor, settings.noteColorMode]);
+    // Note: getCurrentFile and playback.currentTime are read via getState()
+    // to avoid recreating this callback and to always get fresh data
+  }, [
+    lookahead,
+    settings.leftHandColor,
+    settings.rightHandColor,
+    settings.noteColorMode,
+  ]);
 
   // Keep ref updated with latest renderNotes
   renderNotesRef.current = renderNotes;

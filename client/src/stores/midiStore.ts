@@ -44,6 +44,12 @@ interface MidiStore {
   setLiveNote: (note: number, active: boolean) => void;
   clearLiveNotes: () => void;
 
+  // Satisfied notes for wait mode (notes that have been hit at least once)
+  satisfiedWaitNotes: Set<number>;
+  addSatisfiedWaitNote: (note: number) => void;
+  clearSatisfiedWaitNotes: () => void;
+  pruneStatisfiedWaitNotes: (requiredNotes: number[]) => void;
+
   // Settings
   settings: Settings;
   updateSettings: (updates: Partial<Settings>) => void;
@@ -68,13 +74,14 @@ export const useMidiStore = create<MidiStore>()(
       removeFile: (id) =>
         set((state) => ({
           files: state.files.filter((f) => f.id !== id),
-          currentFileId: state.currentFileId === id ? null : state.currentFileId,
+          currentFileId:
+            state.currentFileId === id ? null : state.currentFileId,
         })),
 
       updateFile: (id, updates) =>
         set((state) => ({
           files: state.files.map((f) =>
-            f.id === id ? { ...f, ...updates, lastModified: Date.now() } : f
+            f.id === id ? { ...f, ...updates, lastModified: Date.now() } : f,
           ),
         })),
 
@@ -130,7 +137,10 @@ export const useMidiStore = create<MidiStore>()(
 
       setSpeed: (speed) =>
         set((state) => ({
-          playback: { ...state.playback, speed: Math.max(0.1, Math.min(2, speed)) },
+          playback: {
+            ...state.playback,
+            speed: Math.max(0.1, Math.min(2, speed)),
+          },
         })),
 
       toggleWaitMode: () =>
@@ -173,6 +183,28 @@ export const useMidiStore = create<MidiStore>()(
 
       clearLiveNotes: () => set({ liveNotes: new Set() }),
 
+      // Satisfied wait notes
+      satisfiedWaitNotes: new Set(),
+
+      addSatisfiedWaitNote: (note) =>
+        set((state) => {
+          const newNotes = new Set(state.satisfiedWaitNotes);
+          newNotes.add(note);
+          return { satisfiedWaitNotes: newNotes };
+        }),
+
+      clearSatisfiedWaitNotes: () => set({ satisfiedWaitNotes: new Set() }),
+
+      // Remove notes from satisfied set that are no longer required
+      pruneStatisfiedWaitNotes: (requiredNotes: number[]) =>
+        set((state) => {
+          const required = new Set(requiredNotes);
+          const pruned = new Set(
+            [...state.satisfiedWaitNotes].filter((note) => required.has(note)),
+          );
+          return { satisfiedWaitNotes: pruned };
+        }),
+
       // Settings
       settings: DEFAULT_SETTINGS,
 
@@ -190,40 +222,33 @@ export const useMidiStore = create<MidiStore>()(
             f.id === fileId
               ? {
                   ...f,
-                  tracks: f.tracks.map((t, i) =>
-                    i === trackIndex ? { ...t, enabled: !t.enabled } : t
+                  tracks: f.tracks.map((t) =>
+                    t.index === trackIndex ? { ...t, enabled: !t.enabled } : t,
                   ),
                 }
-              : f
+              : f,
           ),
         })),
     }),
     {
       name: 'piano-storage',
       partialize: (state) => ({
-        files: state.files.map((f) => ({ ...f, rawData: undefined })), // Don't persist raw data
-        currentFileId: state.currentFileId,
+        // Don't persist files - they contain too much note data and exceed localStorage quota
         selectedInputId: state.selectedInputId,
         selectedOutputId: state.selectedOutputId,
         settings: state.settings,
       }),
-    }
-  )
+    },
+  ),
 );
 
 /** Get notes that should be visible at a given time */
 export function getVisibleNotes(
   file: MidiFile,
   currentTime: number,
-  lookahead: number = 3
+  lookahead: number = 3,
 ): MidiNote[] {
   const notes: MidiNote[] = [];
-
-  // Debug: log file info occasionally
-  if (Math.random() < 0.005) {
-    console.log('[getVisibleNotes] file tracks:', file.tracks.length, 'total notes:', file.tracks.reduce((sum, t) => sum + t.notes.length, 0));
-    console.log('[getVisibleNotes] track enabled states:', file.tracks.map(t => ({ name: t.name, enabled: t.enabled, notes: t.notes.length })));
-  }
 
   for (const track of file.tracks) {
     if (!track.enabled) continue;
@@ -233,11 +258,6 @@ export function getVisibleNotes(
         notes.push(note);
       }
     }
-  }
-
-  // Debug: log result occasionally
-  if (Math.random() < 0.005 && notes.length > 0) {
-    console.log('[getVisibleNotes] Found', notes.length, 'visible notes, first note starts at:', notes[0].startTime.toFixed(3));
   }
 
   return notes;
