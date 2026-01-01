@@ -21,3 +21,6 @@ bun.lock
 # Environment
 .env
 .env.local
+
+# SSL certificates
+certs/

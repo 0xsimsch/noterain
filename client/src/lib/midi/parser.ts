@@ -9,6 +9,7 @@ import type {
 } from '../../types/midi';
 import { generateId, saveRawMidiData } from '../../utils/storage';
 
+
 /** Default colors for tracks */
 const TRACK_COLORS = [
   '#3b82f6', // blue

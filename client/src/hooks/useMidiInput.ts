@@ -46,6 +46,7 @@ export function useMidiInput() {
   // Initialize WebMidi
   useEffect(() => {
     let mounted = true;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
 
     async function init() {
       try {
@@ -67,9 +68,80 @@ export function useMidiInput() {
         // Listen for device changes
         WebMidi.addListener('connected', handleConnected);
         WebMidi.addListener('disconnected', handleDisconnected);
+
+        // Start polling if no hardware devices found
+        startPollingIfNeeded();
       } catch (err) {
         console.error('WebMidi could not be enabled:', err);
       }
+    }
+
+    function getHardwareInputs() {
+      const all = WebMidi.inputs;
+      const hardware = all.filter(
+        (i) => !isVirtualDevice(i.name, i.manufacturer)
+      );
+      console.log('[MidiInput] All inputs:', all.map(i => i.name), 'Hardware:', hardware.map(i => i.name));
+      return hardware;
+    }
+
+    async function pollForDevices() {
+      if (!mounted) return;
+
+      try {
+        console.log('[MidiInput] Polling for MIDI devices...');
+        // Use native API to get fresh device list
+        const midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+        const inputs = Array.from(midiAccess.inputs.values());
+        const hardwareInputs = inputs.filter(
+          (i) => !isVirtualDevice(i.name || '', i.manufacturer || '')
+        );
+        console.log('[MidiInput] Poll found', inputs.length, 'inputs,', hardwareInputs.length, 'hardware');
+
+        if (hardwareInputs.length > 0) {
+          console.log('[MidiInput] Hardware devices detected via polling:', hardwareInputs.map(i => i.name));
+          // Re-enable WebMidi to refresh its internal state
+          if (WebMidi.enabled) {
+            await WebMidi.disable();
+          }
+          await WebMidi.enable({ sysex: false });
+
+          // Re-attach event listeners
+          WebMidi.addListener('connected', handleConnected);
+          WebMidi.addListener('disconnected', handleDisconnected);
+
+          // Update initial device IDs
+          initialInputIdsRef.current = new Set(WebMidi.inputs.map((i) => i.id));
+
+          updateDevices();
+
+          // Stop polling
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      } catch (err) {
+        console.error('[MidiInput] Error polling for devices:', err);
+      }
+    }
+
+    function startPollingIfNeeded() {
+      // Clear any existing poll interval
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+
+      // If we have hardware inputs, no need to poll
+      if (getHardwareInputs().length > 0) {
+        console.log('[MidiInput] Hardware devices found, polling not needed');
+        return;
+      }
+
+      // Poll every 2 seconds for new devices
+      console.log('[MidiInput] No hardware devices found, starting polling');
+      pollInterval = setInterval(pollForDevices, 2000);
     }
 
     function updateDevices() {
@@ -125,6 +197,9 @@ export function useMidiInput() {
           );
           selectInput(hardwareInput?.id || null);
         }
+
+        // Resume polling if no hardware devices remain
+        startPollingIfNeeded();
       }
     }
 
@@ -132,6 +207,10 @@ export function useMidiInput() {
 
     return () => {
       mounted = false;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
       if (WebMidi.enabled) {
         WebMidi.removeListener('connected', handleConnected);
         WebMidi.removeListener('disconnected', handleDisconnected);

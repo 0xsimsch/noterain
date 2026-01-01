@@ -276,3 +276,22 @@ export function getActiveNotesAtTime(file: MidiFile, time: number): MidiNote[] {
   }
   return notes;
 }
+
+/** Grace period in seconds for early note hits in wait mode */
+export const WAIT_MODE_GRACE_PERIOD = 0.15;
+
+/** Get notes that should be considered for wait mode (including upcoming notes within grace period) */
+export function getWaitModeNotes(file: MidiFile, time: number): MidiNote[] {
+  const notes: MidiNote[] = [];
+  for (const track of file.tracks) {
+    if (!track.enabled) continue;
+    for (const note of track.notes) {
+      // Include notes that are currently playing OR about to start within grace period
+      const noteEnd = note.startTime + note.duration;
+      if (note.startTime <= time + WAIT_MODE_GRACE_PERIOD && noteEnd > time) {
+        notes.push(note);
+      }
+    }
+  }
+  return notes;
+}

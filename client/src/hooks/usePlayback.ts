@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useMidiStore, getActiveNotesAtTime } from '../stores/midiStore';
+import { useMidiStore, getActiveNotesAtTime, getWaitModeNotes } from '../stores/midiStore';
 import { useAudioEngine } from './useAudioEngine';
 
 /** Hook for MIDI playback control */
@@ -93,15 +93,20 @@ export function usePlayback() {
       const activeNoteNumbers = new Set(activeNotes.map((n) => n.noteNumber));
 
       // Wait mode: don't advance time until user plays the required notes
+      // Use activeNotes (no grace period) for determining WHEN to wait
+      // The grace period in getWaitModeNotes is only for accepting early hits
       if (state.playback.waitMode && activeNotes.length > 0) {
-        const requiredNotes = activeNotes.map((n) => n.noteNumber);
+        // Get notes including grace period for checking satisfied status
+        const waitModeNotes = getWaitModeNotes(file, newTime);
+        const requiredNotes = waitModeNotes.map((n) => n.noteNumber);
 
         // Remove satisfied notes that are no longer required
         pruneStatisfiedWaitNotes(requiredNotes);
 
-        // Re-read state after pruning
+        // Check if all CURRENTLY ACTIVE notes have been played
+        // (not upcoming notes within grace period)
         const satisfiedNotes = useMidiStore.getState().satisfiedWaitNotes;
-        const allPlayed = requiredNotes.every((note) =>
+        const allPlayed = [...activeNoteNumbers].every((note) =>
           satisfiedNotes.has(note),
         );
 
