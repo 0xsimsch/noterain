@@ -322,73 +322,6 @@ function getBeamGroupsForTimeSignature(
   }
 }
 
-/**
- * Calculate note density to determine optimal measures per line.
- * Denser music (more 16th notes) needs fewer measures per line.
- * Sparser music (whole/half notes) can have more measures per line.
- *
- * @returns Density factor (< 1 for dense, > 1 for sparse, 1 for normal)
- */
-function calculateNoteDensity(notes: MidiNote[], bpm: number): number {
-  if (notes.length === 0) return 1;
-
-  const beatsPerSecond = bpm / 60;
-
-  // Count notes by duration category
-  let shortNotes = 0; // 16th notes and shorter (< 0.375 beats)
-  let normalNotes = 0; // 8th and quarter notes (0.375 - 1.5 beats)
-  let longNotes = 0; // Half notes and longer (> 1.5 beats)
-
-  for (const note of notes) {
-    const beats = note.duration * beatsPerSecond;
-    if (beats < 0.375) {
-      shortNotes++;
-    } else if (beats > 1.5) {
-      longNotes++;
-    } else {
-      normalNotes++;
-    }
-  }
-
-  const total = shortNotes + normalNotes + longNotes;
-  if (total === 0) return 1;
-
-  // Calculate density factor:
-  // - High proportion of short notes = lower factor (fewer measures per line)
-  // - High proportion of long notes = higher factor (more measures per line)
-  const shortRatio = shortNotes / total;
-  const longRatio = longNotes / total;
-  const densityFactor = 1 - shortRatio * 0.5 + longRatio * 0.5;
-
-  return Math.max(0.5, Math.min(1.5, densityFactor));
-}
-
-/**
- * Calculate optimal number of measures per line based on time signature and note density.
- *
- * Standard rules:
- * - 4-8 measures per line is standard
- * - Dense music (16th notes): 2-3 measures per line
- * - Sparse music (whole/half notes): up to 10-12 measures per line
- * - Target ~16 quarter notes of content per line as baseline
- */
-function calculateMeasuresPerLine(
-  quarterNotesPerMeasure: number,
-  densityFactor: number,
-): number {
-  // Target ~16 quarter notes worth of content per line (4 measures for 4/4)
-  const targetQuarterNotesPerLine = 16;
-
-  // Base calculation: how many measures to reach target
-  const baseMeasures = targetQuarterNotesPerLine / quarterNotesPerMeasure;
-
-  // Adjust for note density
-  const adjustedMeasures = baseMeasures * densityFactor;
-
-  // Clamp to reasonable range: 2-6 measures per line
-  return Math.max(2, Math.min(6, Math.round(adjustedMeasures)));
-}
-
 /** Get note duration string for VexFlow */
 function getDuration(durationSeconds: number, bpm: number): string {
   const beatsPerSecond = bpm / 60;
@@ -530,6 +463,187 @@ function normalizeTimeSignature(
   return { numerator: normNum, denominator: normDenom };
 }
 
+/** Track measure data for voice creation */
+interface TrackMeasureData {
+  track: MidiTrack;
+  measures: Measure[];
+  clef: 'treble' | 'bass';
+}
+
+/**
+ * Create voices for a measure without creating staves.
+ * Used for calculating minimum widths before layout.
+ */
+function createVoicesForMeasure(
+  trackMeasures: TrackMeasureData[],
+  measureIndex: number,
+  bpm: number,
+  beatsPerMeasure: number,
+  beatValue: number,
+  keyNum: number,
+  quarterNotesPerMeasure: number,
+): { voices: Voice[]; trackClefs: ('treble' | 'bass')[] } {
+  const secondsPerQuarterNote = 60 / bpm;
+
+  // Build unified beat grid across ALL tracks for this measure
+  const allBeatKeys = new Set<number>();
+  trackMeasures.forEach(({ measures }) => {
+    const measure = measures[measureIndex];
+    if (!measure || measure.notes.length === 0) return;
+    for (const note of measure.notes) {
+      const quarterBeatInMeasure =
+        (note.startTime - measure.startTime) / secondsPerQuarterNote;
+      const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
+      const beatKey = Math.round(quantizedBeat * 1000);
+      if (beatKey / 1000 < quarterNotesPerMeasure) {
+        allBeatKeys.add(beatKey);
+      }
+    }
+  });
+  const unifiedBeatGrid = [...allBeatKeys].sort((a, b) => a - b);
+
+  // Build beat->duration map from notes that actually exist
+  const beatDurations = new Map<number, string>();
+  trackMeasures.forEach(({ measures }) => {
+    const measure = measures[measureIndex];
+    if (!measure || measure.notes.length === 0) return;
+    for (const note of measure.notes) {
+      const quarterBeatInMeasure =
+        (note.startTime - measure.startTime) / secondsPerQuarterNote;
+      const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
+      const beatKey = Math.round(quantizedBeat * 1000);
+      if (!beatDurations.has(beatKey)) {
+        const duration = getDuration(note.duration, bpm);
+        beatDurations.set(beatKey, duration);
+      }
+    }
+  });
+
+  const voices: Voice[] = [];
+  const trackClefs: ('treble' | 'bass')[] = [];
+
+  // Create voices for each track
+  trackMeasures.forEach(({ measures, clef }) => {
+    const measure = measures[measureIndex];
+
+    // Group notes by beat position
+    const noteGroups: Map<number, MidiNote[]> = new Map();
+    if (measure && measure.notes.length > 0) {
+      for (const note of measure.notes) {
+        const quarterBeatInMeasure =
+          (note.startTime - measure.startTime) / secondsPerQuarterNote;
+        const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
+        const beatKey = Math.round(quantizedBeat * 1000);
+        if (!noteGroups.has(beatKey)) {
+          noteGroups.set(beatKey, []);
+        }
+        noteGroups.get(beatKey)!.push(note);
+      }
+    }
+
+    // Skip if no notes in unified grid
+    if (unifiedBeatGrid.length === 0) {
+      return;
+    }
+
+    // Create VexFlow notes
+    const staveNotes: (StaveNote | GhostNote)[] = [];
+    let currentBeat = 0;
+
+    for (const beatKey of unifiedBeatGrid) {
+      const noteBeat = beatKey / 1000;
+      if (noteBeat >= quarterNotesPerMeasure) continue;
+
+      // Add ghost notes to fill gap
+      const gap = noteBeat - currentBeat;
+      if (gap >= 0.125) {
+        const restDurations = generateRests(gap);
+        for (const restDur of restDurations) {
+          try {
+            const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
+            staveNotes.push(ghostNote);
+          } catch {
+            // Skip notes that can't be created
+          }
+        }
+      }
+
+      const notes = noteGroups.get(beatKey);
+      if (notes && notes.length > 0) {
+        const keys: string[] = [];
+        const accidentals: (string | undefined)[] = [];
+        for (const note of notes) {
+          const { key, accidental } = midiToVexFlow(note.noteNumber, keyNum);
+          keys.push(key);
+          accidentals.push(accidental);
+        }
+
+        const remainingInMeasure = quarterNotesPerMeasure - noteBeat;
+        const rawDuration = getDuration(notes[0].duration, bpm);
+        const rawDurationBeats = durationToBeats(rawDuration);
+        const clampedBeats = Math.min(rawDurationBeats, remainingInMeasure);
+        const duration = beatsToDuration(clampedBeats);
+
+        try {
+          const staveNote = new StaveNote({
+            keys,
+            duration,
+            clef,
+            autoStem: true,
+          });
+          accidentals.forEach((acc, i) => {
+            if (acc) {
+              staveNote.addModifier(new Accidental(acc), i);
+            }
+          });
+          staveNotes.push(staveNote);
+          currentBeat = noteBeat + durationToBeats(duration);
+        } catch {
+          // Skip notes that can't be rendered
+        }
+      } else {
+        const ghostDuration = beatDurations.get(beatKey) || '8';
+        try {
+          const ghostNote = new GhostNote({ duration: ghostDuration });
+          staveNotes.push(ghostNote);
+          currentBeat = noteBeat + durationToBeats(ghostDuration);
+        } catch {
+          // Skip notes that can't be created
+        }
+      }
+    }
+
+    // Add trailing rests to fill measure
+    if (currentBeat < quarterNotesPerMeasure) {
+      const gap = quarterNotesPerMeasure - currentBeat;
+      if (gap >= 0.125) {
+        const restDurations = generateRests(gap);
+        for (const restDur of restDurations) {
+          try {
+            const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
+            staveNotes.push(ghostNote);
+          } catch {
+            // Skip notes that can't be created
+          }
+        }
+      }
+    }
+
+    if (staveNotes.length === 0) return;
+
+    // Create voice
+    const voice = new Voice({
+      numBeats: beatsPerMeasure,
+      beatValue,
+    }).setStrict(false);
+    voice.addTickables(staveNotes);
+    voices.push(voice);
+    trackClefs.push(clef);
+  });
+
+  return { voices, trackClefs };
+}
+
 export function SheetMusic({
   beatsPerMeasure: beatsPerMeasureProp,
 }: SheetMusicProps) {
@@ -617,31 +731,77 @@ export function SheetMusic({
     // e.g., 4/4 = 4, 3/4 = 3, 6/8 = 3, 2/4 = 2
     const quarterNotesPerMeasure = beatsPerMeasure * (4 / beatValue);
 
-    // Calculate note density and optimal measures per line
-    const densityFactor = calculateNoteDensity(allNotes, bpm);
-    const stavesPerLine = calculateMeasuresPerLine(quarterNotesPerMeasure, densityFactor);
+    const measureCount = trackMeasures[0]?.measures.length || 0;
 
-    // Adjust stave width to fill available space (aim for ~1200px total width)
-    const totalWidth = 1200;
+    // Layout constants
+    const totalAvailableWidth = 1200;
     const leftMargin = 10;
-    const staveWidth = Math.floor((totalWidth - leftMargin * 2) / stavesPerLine);
     const singleStaveHeight = 80;
-    const trackSpacing = 20; // Space between track groups
+    const trackSpacing = 20;
     const topMargin = 40;
+    const clefKeyTimeWidth = 80; // Extra space for clef, key sig, time sig on first measure of line
+    const measurePadding = 30; // Padding between measures
+
+    // ============ FIRST PASS: Calculate minimum widths for all measures ============
+    const measureMinWidths: number[] = [];
+    for (let measureIndex = 0; measureIndex < measureCount; measureIndex++) {
+      const { voices } = createVoicesForMeasure(
+        trackMeasures,
+        measureIndex,
+        bpm,
+        beatsPerMeasure,
+        beatValue,
+        keyNum,
+        quarterNotesPerMeasure,
+      );
+
+      if (voices.length > 0) {
+        try {
+          const formatter = new Formatter();
+          voices.forEach((v) => formatter.joinVoices([v]));
+          const minWidth = formatter.preCalculateMinTotalWidth(voices);
+          measureMinWidths.push(Math.max(minWidth, 60)); // Minimum 60px per measure
+        } catch {
+          measureMinWidths.push(100); // Default for measures that fail
+        }
+      } else {
+        measureMinWidths.push(60); // Default for empty measures
+      }
+    }
+
+    // ============ LAYOUT: Group measures into lines based on actual widths ============
+    const lines: number[][] = [];
+    let currentLine: number[] = [];
+    let currentLineWidth = clefKeyTimeWidth; // First measure needs extra space for clef/key/time
+
+    for (let i = 0; i < measureCount; i++) {
+      const measureWidth = measureMinWidths[i] + measurePadding;
+
+      // Check if this measure fits on current line
+      if (currentLineWidth + measureWidth > totalAvailableWidth - leftMargin * 2 && currentLine.length > 0) {
+        // Start new line
+        lines.push(currentLine);
+        currentLine = [i];
+        currentLineWidth = clefKeyTimeWidth + measureWidth;
+      } else {
+        currentLine.push(i);
+        currentLineWidth += measureWidth;
+      }
+    }
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+    }
 
     // Height for one "system" (all tracks for one set of measures)
-    const systemHeight =
-      enabledTracks.length * singleStaveHeight + trackSpacing;
-
-    const measureCount = trackMeasures[0]?.measures.length || 0;
-    const lineCount = Math.ceil(measureCount / stavesPerLine);
+    const systemHeight = enabledTracks.length * singleStaveHeight + trackSpacing;
+    const lineCount = lines.length;
     const totalHeight = lineCount * systemHeight + topMargin * 2;
 
     setRenderedHeight(totalHeight);
 
     // Create renderer
     const renderer = new Renderer(container, Renderer.Backends.SVG);
-    renderer.resize(stavesPerLine * staveWidth + leftMargin * 2, totalHeight);
+    renderer.resize(totalAvailableWidth, totalHeight);
     const context = renderer.getContext();
     context.setFont('Arial', 10);
 
@@ -653,263 +813,241 @@ export function SheetMusic({
 
     // Collect note positions for highlighting
     const notePositions: NotePosition[] = [];
+    const secondsPerQuarterNote = 60 / bpm;
 
-    // Render each measure
-    for (let measureIndex = 0; measureIndex < measureCount; measureIndex++) {
-      const lineIndex = Math.floor(measureIndex / stavesPerLine);
-      const posInLine = measureIndex % stavesPerLine;
-      const x = leftMargin + posInLine * staveWidth;
+    // ============ SECOND PASS: Render each line with proper widths ============
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const measureIndices = lines[lineIndex];
       const baseY = topMargin + lineIndex * systemHeight;
 
-      const staves: Stave[] = [];
-      const voices: Voice[] = [];
-      const voiceData: {
-        voice: Voice;
-        stave: Stave;
-        staveNotes: (StaveNote | GhostNote)[];
-        noteTimings: {
-          startTime: number;
-          endTime: number;
-          staveNoteIndex: number;
-        }[];
-      }[] = [];
+      // Calculate total min width for this line's measures
+      const totalMinWidth = measureIndices.reduce((sum, i) => sum + measureMinWidths[i], 0);
 
-      // First pass: create all staves and voices
-      trackMeasures.forEach(({ track, measures, clef }, trackIndex) => {
-        const y = baseY + trackIndex * singleStaveHeight;
-        const measure = measures[measureIndex];
+      // Calculate available width for notes (excluding clef/key/time space on first measure)
+      const availableForNotes = totalAvailableWidth - leftMargin * 2 - clefKeyTimeWidth;
 
-        // Create stave
-        const stave = new Stave(x, y, staveWidth);
-        if (posInLine === 0) {
-          stave.addClef(clef);
-          stave.addKeySignature(vexFlowKey);
-          // Only show time signature on the first line
-          if (lineIndex === 0) {
-            stave.addTimeSignature(`${beatsPerMeasure}/${beatValue}`);
-          }
-        }
-        stave.setContext(context).draw();
-        staves.push(stave);
+      // Scale factor to fill available width (justify measures)
+      const scaleFactor = Math.max(1, availableForNotes / (totalMinWidth + measureIndices.length * measurePadding));
 
-        // Skip empty measures
-        if (!measure || measure.notes.length === 0) {
-          return;
-        }
+      let x = leftMargin;
 
-        // Group simultaneous notes (chords) by their beat position
-        // Use quarter notes as the internal beat unit (matches MIDI BPM and VexFlow durations)
-        const secondsPerQuarterNote = 60 / bpm;
-        // quarterNotesPerMeasure is defined in outer scope (e.g., 6/8 = 3 quarter notes)
-        const noteGroups: Map<number, MidiNote[]> = new Map();
-        for (const note of measure.notes) {
-          const quarterBeatInMeasure =
-            (note.startTime - measure.startTime) / secondsPerQuarterNote;
-          const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
-          const beatKey = Math.round(quantizedBeat * 1000);
-          if (!noteGroups.has(beatKey)) {
-            noteGroups.set(beatKey, []);
-          }
-          noteGroups.get(beatKey)!.push(note);
-        }
+      for (let posInLine = 0; posInLine < measureIndices.length; posInLine++) {
+        const measureIndex = measureIndices[posInLine];
+        const isFirstInLine = posInLine === 0;
 
-        // Create VexFlow notes with ghost notes filling gaps (for spacing)
-        const staveNotes: (StaveNote | GhostNote)[] = [];
-        const noteTimings: {
-          startTime: number;
-          endTime: number;
-          staveNoteIndex: number;
+        // Calculate stave width: base width + scaling + extra for first measure
+        const baseStaveWidth = measureMinWidths[measureIndex] * scaleFactor + measurePadding;
+        const staveWidth = isFirstInLine ? baseStaveWidth + clefKeyTimeWidth : baseStaveWidth;
+
+        const staves: Stave[] = [];
+        const voices: Voice[] = [];
+        const voiceData: {
+          voice: Voice;
+          stave: Stave;
+          staveNotes: (StaveNote | GhostNote)[];
+          noteTimings: { startTime: number; endTime: number; staveNoteIndex: number }[];
         }[] = [];
-        const sortedBeatKeys = [...noteGroups.keys()].sort((a, b) => a - b);
-        const trackColor = hexToRgb(track.color);
 
-        let currentBeat = 0;
+        // Build unified beat grid for this measure
+        const allBeatKeys = new Set<number>();
+        trackMeasures.forEach(({ measures }) => {
+          const measure = measures[measureIndex];
+          if (!measure || measure.notes.length === 0) return;
+          for (const note of measure.notes) {
+            const quarterBeatInMeasure = (note.startTime - measure.startTime) / secondsPerQuarterNote;
+            const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
+            const beatKey = Math.round(quantizedBeat * 1000);
+            if (beatKey / 1000 < quarterNotesPerMeasure) {
+              allBeatKeys.add(beatKey);
+            }
+          }
+        });
+        const unifiedBeatGrid = [...allBeatKeys].sort((a, b) => a - b);
 
-        for (const beatKey of sortedBeatKeys) {
-          const noteBeat = beatKey / 1000;
-          const notes = noteGroups.get(beatKey)!;
+        // Build beat->duration map
+        const beatDurations = new Map<number, string>();
+        trackMeasures.forEach(({ measures }) => {
+          const measure = measures[measureIndex];
+          if (!measure || measure.notes.length === 0) return;
+          for (const note of measure.notes) {
+            const quarterBeatInMeasure = (note.startTime - measure.startTime) / secondsPerQuarterNote;
+            const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
+            const beatKey = Math.round(quantizedBeat * 1000);
+            if (!beatDurations.has(beatKey)) {
+              beatDurations.set(beatKey, getDuration(note.duration, bpm));
+            }
+          }
+        });
 
-          if (noteBeat >= quarterNotesPerMeasure) continue;
+        // Create staves and voices for each track
+        trackMeasures.forEach(({ track, measures, clef }, trackIndex) => {
+          const y = baseY + trackIndex * singleStaveHeight;
+          const measure = measures[measureIndex];
 
-          // Add invisible ghost notes to fill gap before this note (for proper spacing)
-          const gap = noteBeat - currentBeat;
-          if (gap >= 0.125) {
-            const restDurations = generateRests(gap);
-            for (const restDur of restDurations) {
+          // Create stave with calculated width
+          const stave = new Stave(x, y, staveWidth);
+          if (isFirstInLine) {
+            stave.addClef(clef);
+            stave.addKeySignature(vexFlowKey);
+            if (lineIndex === 0) {
+              stave.addTimeSignature(`${beatsPerMeasure}/${beatValue}`);
+            }
+          }
+          stave.setContext(context);
+          staves.push(stave);
+
+          // Group notes by beat position
+          const noteGroups: Map<number, MidiNote[]> = new Map();
+          if (measure && measure.notes.length > 0) {
+            for (const note of measure.notes) {
+              const quarterBeatInMeasure = (note.startTime - measure.startTime) / secondsPerQuarterNote;
+              const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
+              const beatKey = Math.round(quantizedBeat * 1000);
+              if (!noteGroups.has(beatKey)) noteGroups.set(beatKey, []);
+              noteGroups.get(beatKey)!.push(note);
+            }
+          }
+
+          if (unifiedBeatGrid.length === 0) return;
+
+          // Create VexFlow notes
+          const staveNotes: (StaveNote | GhostNote)[] = [];
+          const noteTimings: { startTime: number; endTime: number; staveNoteIndex: number }[] = [];
+          const trackColor = hexToRgb(track.color);
+          let currentBeat = 0;
+
+          for (const beatKey of unifiedBeatGrid) {
+            const noteBeat = beatKey / 1000;
+            if (noteBeat >= quarterNotesPerMeasure) continue;
+
+            // Fill gap with ghost notes
+            const gap = noteBeat - currentBeat;
+            if (gap >= 0.125) {
+              for (const restDur of generateRests(gap)) {
+                try {
+                  staveNotes.push(new GhostNote({ duration: restDur.replace('r', '') }));
+                } catch { /* skip */ }
+              }
+            }
+
+            const notes = noteGroups.get(beatKey);
+            if (notes && notes.length > 0) {
+              const keys: string[] = [];
+              const accidentals: (string | undefined)[] = [];
+              for (const note of notes) {
+                const { key, accidental } = midiToVexFlow(note.noteNumber, keyNum);
+                keys.push(key);
+                accidentals.push(accidental);
+              }
+
+              const remainingInMeasure = quarterNotesPerMeasure - noteBeat;
+              const rawDuration = getDuration(notes[0].duration, bpm);
+              const clampedBeats = Math.min(durationToBeats(rawDuration), remainingInMeasure);
+              const duration = beatsToDuration(clampedBeats);
+              const maxDuration = Math.max(...notes.map((n) => n.duration));
+
               try {
-                // Use GhostNote instead of visible rest - takes up space but doesn't render
-                const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
-                staveNotes.push(ghostNote);
-              } catch {
-                // Skip notes that can't be created
+                const staveNote = new StaveNote({ keys, duration, clef, autoStem: true });
+                staveNote.setStyle({ fillStyle: trackColor, strokeStyle: trackColor });
+                accidentals.forEach((acc, i) => { if (acc) staveNote.addModifier(new Accidental(acc), i); });
+                staveNotes.push(staveNote);
+                noteTimings.push({
+                  startTime: notes[0].startTime,
+                  endTime: notes[0].startTime + maxDuration,
+                  staveNoteIndex: staveNotes.length - 1,
+                });
+                currentBeat = noteBeat + durationToBeats(duration);
+              } catch { /* skip */ }
+            } else {
+              const ghostDuration = beatDurations.get(beatKey) || '8';
+              try {
+                staveNotes.push(new GhostNote({ duration: ghostDuration }));
+                currentBeat = noteBeat + durationToBeats(ghostDuration);
+              } catch { /* skip */ }
+            }
+          }
+
+          // Fill trailing space
+          if (currentBeat < quarterNotesPerMeasure) {
+            const gap = quarterNotesPerMeasure - currentBeat;
+            if (gap >= 0.125) {
+              for (const restDur of generateRests(gap)) {
+                try {
+                  staveNotes.push(new GhostNote({ duration: restDur.replace('r', '') }));
+                } catch { /* skip */ }
               }
             }
           }
 
-          // Create the actual note(s)
-          const keys: string[] = [];
-          const accidentals: (string | undefined)[] = [];
+          if (staveNotes.length === 0) return;
 
-          for (const note of notes) {
-            const { key, accidental } = midiToVexFlow(note.noteNumber, keyNum);
-            keys.push(key);
-            accidentals.push(accidental);
-          }
+          const voice = new Voice({ numBeats: beatsPerMeasure, beatValue }).setStrict(false);
+          voice.addTickables(staveNotes);
+          voices.push(voice);
+          voiceData.push({ voice, stave, staveNotes, noteTimings });
+        });
 
-          const remainingInMeasure = quarterNotesPerMeasure - noteBeat;
-          const rawDuration = getDuration(notes[0].duration, bpm);
-          const rawDurationBeats = durationToBeats(rawDuration);
-          const clampedBeats = Math.min(rawDurationBeats, remainingInMeasure);
-          const duration = beatsToDuration(clampedBeats);
-          const maxDuration = Math.max(...notes.map((n) => n.duration));
+        // Synchronize and draw staves
+        if (staves.length > 0) {
+          Stave.formatBegModifiers(staves);
+          staves.forEach((stave) => stave.draw());
+        }
 
+        // Format and draw voices
+        if (voices.length > 0) {
           try {
-            const staveNote = new StaveNote({
-              keys,
-              duration,
-              clef,
-              autoStem: true, // Automatically flip stems based on note position
-            });
+            const noteStartX = staves[0].getNoteStartX();
+            const noteEndX = Math.min(...staves.map((s) => s.getNoteEndX()));
+            const usableWidth = noteEndX - noteStartX;
 
-            staveNote.setStyle({
-              fillStyle: trackColor,
-              strokeStyle: trackColor,
-            });
+            const formatter = new Formatter({ softmaxFactor: 5 }); // Lower value = more spacious
+            voices.forEach((v) => formatter.joinVoices([v]));
+            formatter.format(voices, usableWidth);
 
-            accidentals.forEach((acc, i) => {
-              if (acc) {
-                staveNote.addModifier(new Accidental(acc), i);
-              }
-            });
+            voiceData.forEach(({ voice, stave, staveNotes, noteTimings }) => {
+              const beamGroups = getBeamGroupsForTimeSignature(beatsPerMeasure, beatValue);
+              const beams = Beam.generateBeams(staveNotes, { groups: beamGroups, maintainStemDirections: true });
+              voice.draw(context, stave);
+              beams.forEach((beam) => beam.setContext(context).draw());
 
-            staveNotes.push(staveNote);
-            noteTimings.push({
-              startTime: notes[0].startTime,
-              endTime: notes[0].startTime + maxDuration,
-              staveNoteIndex: staveNotes.length - 1,
+              noteTimings.forEach((timing) => {
+                try {
+                  const staveNote = staveNotes[timing.staveNoteIndex];
+                  const noteX = staveNote.getAbsoluteX();
+                  const bb = staveNote.getBoundingBox();
+                  if (bb) {
+                    notePositions.push({
+                      x: noteX, y: bb.getY(), width: 20, height: bb.getH(),
+                      startTime: timing.startTime, endTime: timing.endTime,
+                    });
+                  }
+                } catch { /* ignore */ }
+              });
             });
-
-            currentBeat = noteBeat + durationToBeats(duration);
-          } catch {
-            // Skip notes that can't be rendered
-          }
+          } catch { /* ignore formatting errors */ }
         }
 
-        // Add trailing rests to fill measure
-        if (currentBeat < quarterNotesPerMeasure) {
-          const gap = quarterNotesPerMeasure - currentBeat;
-          if (gap >= 0.125) {
-            const restDurations = generateRests(gap);
-            for (const restDur of restDurations) {
-              try {
-                // Use GhostNote instead of visible rest - takes up space but doesn't render
-                const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
-                staveNotes.push(ghostNote);
-              } catch {
-                // Skip notes that can't be created
-              }
-            }
-          }
+        // Draw connectors
+        if (isFirstInLine && staves.length > 1) {
+          try {
+            const connector = new StaveConnector(staves[0], staves[staves.length - 1]);
+            connector.setType('brace');
+            connector.setContext(context).draw();
+            const lineConnector = new StaveConnector(staves[0], staves[staves.length - 1]);
+            lineConnector.setType('singleLeft');
+            lineConnector.setContext(context).draw();
+          } catch { /* ignore */ }
         }
 
-        if (staveNotes.length === 0) return;
-
-        // Create voice
-        const voice = new Voice({
-          numBeats: beatsPerMeasure,
-          beatValue,
-        }).setStrict(false);
-        voice.addTickables(staveNotes);
-        voices.push(voice);
-        voiceData.push({ voice, stave, staveNotes, noteTimings });
-      });
-
-      // Format all voices together for alignment
-      if (voices.length > 0) {
-        try {
-          const noteStartX = staves[0].getNoteStartX();
-          const noteEndX = staves[0].getNoteEndX();
-          const usableWidth = noteEndX - noteStartX;
-
-          const formatter = new Formatter({ softmaxFactor: 50 });
-          // Don't joinVoices - that's for same-stave voices
-          // Just format all voices together for cross-stave alignment
-          voices.forEach((v) => formatter.joinVoices([v]));
-          formatter.format(voices, usableWidth);
-
-          // Draw all voices with beams
-          voiceData.forEach(({ voice, stave, staveNotes, noteTimings }) => {
-            // Generate beams for 8th notes and shorter, using time-signature-aware groupings
-            const beamGroups = getBeamGroupsForTimeSignature(beatsPerMeasure, beatValue);
-            const beams = Beam.generateBeams(staveNotes, {
-              groups: beamGroups,
-              maintainStemDirections: true,
-            });
-
-            voice.draw(context, stave);
-
-            // Draw beams
-            beams.forEach((beam) => beam.setContext(context).draw());
-
-            // Extract note positions using note head X position (not bounding box which includes accidentals)
-            noteTimings.forEach((timing) => {
-              try {
-                const staveNote = staveNotes[timing.staveNoteIndex];
-                const noteX = staveNote.getAbsoluteX();
-                const bb = staveNote.getBoundingBox();
-                if (bb) {
-                  notePositions.push({
-                    x: noteX,
-                    y: bb.getY(),
-                    width: 20, // Fixed width for note head
-                    height: bb.getH(),
-                    startTime: timing.startTime,
-                    endTime: timing.endTime,
-                  });
-                }
-              } catch {
-                // Ignore position extraction errors
-              }
-            });
-          });
-        } catch {
-          // Ignore formatting errors
+        if (staves.length > 1) {
+          try {
+            const endConnector = new StaveConnector(staves[0], staves[staves.length - 1]);
+            endConnector.setType('singleRight');
+            endConnector.setContext(context).draw();
+          } catch { /* ignore */ }
         }
-      }
 
-      // Draw brace/connector for multiple tracks at start of each line
-      if (posInLine === 0 && staves.length > 1) {
-        try {
-          const connector = new StaveConnector(
-            staves[0],
-            staves[staves.length - 1],
-          );
-          connector.setType('brace');
-          connector.setContext(context).draw();
-
-          const lineConnector = new StaveConnector(
-            staves[0],
-            staves[staves.length - 1],
-          );
-          lineConnector.setType('singleLeft');
-          lineConnector.setContext(context).draw();
-        } catch {
-          // Ignore connector errors
-        }
-      }
-
-      // Draw bar line connector at end of each measure
-      if (staves.length > 1) {
-        try {
-          const endConnector = new StaveConnector(
-            staves[0],
-            staves[staves.length - 1],
-          );
-          endConnector.setType('singleRight');
-          endConnector.setContext(context).draw();
-        } catch {
-          // Ignore connector errors
-        }
+        x += staveWidth;
       }
     }
 
@@ -917,17 +1055,15 @@ export function SheetMusic({
     notePositionsRef.current = notePositions;
 
     // Store layout info for progress tracking
-    // Calculate seconds per measure: (seconds per quarter note) * (quarter notes per measure)
     const secondsPerMeasure = (60 / bpm) * beatsPerMeasure * (4 / beatValue);
     container.dataset.measureCount = String(measureCount);
-    container.dataset.stavesPerLine = String(stavesPerLine);
-    container.dataset.staveWidth = String(staveWidth);
     container.dataset.systemHeight = String(systemHeight);
     container.dataset.leftMargin = String(leftMargin);
     container.dataset.topMargin = String(topMargin);
     container.dataset.secondsPerMeasure = String(secondsPerMeasure);
     container.dataset.trackCount = String(enabledTracks.length);
     container.dataset.singleStaveHeight = String(singleStaveHeight);
+    container.dataset.lineCount = String(lines.length);
   }, [currentFile, beatsPerMeasureProp, theme]);
 
   // Highlight active notes and auto-scroll
