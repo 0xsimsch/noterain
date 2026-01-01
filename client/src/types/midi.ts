@@ -106,6 +106,12 @@ export interface PlaybackState {
   waitMode: boolean;
   /** Currently active notes (for highlighting) */
   activeNotes: Set<number>;
+  /** Whether loop mode is enabled */
+  loopEnabled: boolean;
+  /** Loop start measure (0-indexed), null if not set */
+  loopStartMeasure: number | null;
+  /** Loop end measure (0-indexed), null if not set */
+  loopEndMeasure: number | null;
 }
 
 /** Theme options */

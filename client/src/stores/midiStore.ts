@@ -39,6 +39,11 @@ interface MidiStore {
   addActiveNote: (note: number) => void;
   removeActiveNote: (note: number) => void;
 
+  // Loop
+  setLoopRange: (start: number | null, end: number | null) => void;
+  toggleLoop: () => void;
+  clearLoop: () => void;
+
   // Live input notes (from MIDI keyboard)
   liveNotes: Set<number>;
   setLiveNote: (note: number, active: boolean) => void;
@@ -108,6 +113,9 @@ export const useMidiStore = create<MidiStore>()(
         speed: 1,
         waitMode: false,
         activeNotes: new Set(),
+        loopEnabled: false,
+        loopStartMeasure: null,
+        loopEndMeasure: null,
       },
 
       play: () =>
@@ -166,6 +174,33 @@ export const useMidiStore = create<MidiStore>()(
           newNotes.delete(note);
           return { playback: { ...state.playback, activeNotes: newNotes } };
         }),
+
+      // Loop
+      setLoopRange: (start, end) =>
+        set((state) => ({
+          playback: {
+            ...state.playback,
+            loopStartMeasure: start,
+            loopEndMeasure: end,
+            // Auto-enable loop when both are set
+            loopEnabled: start !== null && end !== null ? true : state.playback.loopEnabled,
+          },
+        })),
+
+      toggleLoop: () =>
+        set((state) => ({
+          playback: { ...state.playback, loopEnabled: !state.playback.loopEnabled },
+        })),
+
+      clearLoop: () =>
+        set((state) => ({
+          playback: {
+            ...state.playback,
+            loopEnabled: false,
+            loopStartMeasure: null,
+            loopEndMeasure: null,
+          },
+        })),
 
       // Live notes
       liveNotes: new Set(),
@@ -294,4 +329,72 @@ export function getWaitModeNotes(file: MidiFile, time: number): MidiNote[] {
     }
   }
   return notes;
+}
+
+/**
+ * Normalize unusual MIDI time signatures to standard notation.
+ * Many MIDI files have incorrectly encoded denominators.
+ */
+function normalizeTimeSignature(
+  numerator: number,
+  denominator: number,
+): { numerator: number; denominator: number } {
+  let normNum = numerator;
+  let normDenom = denominator;
+
+  // Fix x/16 which is almost always an encoding error
+  if (normDenom === 16) {
+    if (normNum % 3 === 0 && normNum >= 6) {
+      normDenom = 8;
+    } else {
+      normDenom = 4;
+    }
+  }
+
+  // Fix very large denominators
+  while (normDenom > 16) {
+    if (normNum % 2 === 0 && normNum > 1) {
+      normNum = normNum / 2;
+    }
+    normDenom = normDenom / 2;
+  }
+
+  if (normDenom === 16) {
+    if (normNum % 3 === 0 && normNum >= 6) {
+      normDenom = 8;
+    } else {
+      normDenom = 4;
+    }
+  }
+
+  const validDenominators = [1, 2, 4, 8];
+  if (!validDenominators.includes(normDenom)) {
+    normDenom = validDenominators.reduce((prev, curr) =>
+      Math.abs(curr - normDenom) < Math.abs(prev - normDenom) ? curr : prev
+    );
+  }
+
+  normNum = Math.max(1, Math.round(normNum));
+  return { numerator: normNum, denominator: normDenom };
+}
+
+/** Get seconds per measure for a MIDI file */
+export function getSecondsPerMeasure(file: MidiFile): number {
+  const bpm = file.tempos.length > 0 ? file.tempos[0].bpm : 120;
+  const rawTimeSignature = file.timeSignature ?? { numerator: 4, denominator: 4 };
+  const normalized = normalizeTimeSignature(rawTimeSignature.numerator, rawTimeSignature.denominator);
+
+  const secondsPerQuarterNote = 60 / bpm;
+  const secondsPerBeat = secondsPerQuarterNote * (4 / normalized.denominator);
+  return secondsPerBeat * normalized.numerator;
+}
+
+/** Get the time in seconds for the start of a measure */
+export function getMeasureTime(file: MidiFile, measureIndex: number): number {
+  return measureIndex * getSecondsPerMeasure(file);
+}
+
+/** Get total number of measures in a file */
+export function getMeasureCount(file: MidiFile): number {
+  return Math.ceil(file.duration / getSecondsPerMeasure(file));
 }

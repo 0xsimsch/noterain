@@ -5,6 +5,16 @@
   background: var(--canvas-bg);
   display: flex;
   justify-content: center;
+  scroll-snap-type: y mandatory;
+}
+
+.snapPoint {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  scroll-snap-align: start;
+  pointer-events: none;
 }
 
 .svgContainer {
@@ -63,4 +73,12 @@
   opacity: 0.25;
   border-radius: 4px;
   box-shadow: 0 0 12px var(--ctp-red);
+}
+
+.loopOverlay {
+  position: absolute;
+  background: var(--ctp-blue);
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 5;
 }

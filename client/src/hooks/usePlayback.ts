@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useMidiStore, getActiveNotesAtTime, getWaitModeNotes } from '../stores/midiStore';
+import { useMidiStore, getActiveNotesAtTime, getWaitModeNotes, getMeasureTime } from '../stores/midiStore';
 import { useAudioEngine } from './useAudioEngine';
 
 /** Hook for MIDI playback control */
@@ -16,6 +16,9 @@ export function usePlayback() {
     getCurrentFile,
     clearSatisfiedWaitNotes,
     pruneStatisfiedWaitNotes,
+    setLoopRange,
+    toggleLoop,
+    clearLoop,
   } = useMidiStore();
 
   const { playNote, stopAll, resumeAudio } = useAudioEngine();
@@ -79,8 +82,26 @@ export function usePlayback() {
       const speed = state.playback.speed;
       const deltaSeconds = (deltaMs / 1000) * speed;
       const prevTime = currentTimeRef.current;
-      const newTime = prevTime + deltaSeconds;
+      let newTime = prevTime + deltaSeconds;
       currentTimeRef.current = newTime;
+
+      // Check for loop boundary
+      const { loopEnabled, loopStartMeasure, loopEndMeasure } = state.playback;
+      if (loopEnabled && loopStartMeasure !== null && loopEndMeasure !== null) {
+        const loopEndTime = getMeasureTime(file, loopEndMeasure + 1); // End of the last measure
+        const loopStartTime = getMeasureTime(file, loopStartMeasure);
+
+        if (newTime >= loopEndTime) {
+          // Loop back to start
+          newTime = loopStartTime;
+          currentTimeRef.current = loopStartTime;
+          scheduledNotesRef.current.clear(); // Prevent double-playing
+          clearSatisfiedWaitNotes(); // Clear wait mode state on loop
+          seek(loopStartTime);
+          animationFrameRef.current = requestAnimationFrame(tick);
+          return;
+        }
+      }
 
       // Check if we've reached the end
       if (newTime >= file.duration) {
@@ -227,6 +248,9 @@ export function usePlayback() {
     speed: playback.speed,
     waitMode: playback.waitMode,
     activeNotes: playback.activeNotes,
+    loopEnabled: playback.loopEnabled,
+    loopStartMeasure: playback.loopStartMeasure,
+    loopEndMeasure: playback.loopEndMeasure,
     togglePlay,
     stop: handleStop,
     seek,
@@ -234,5 +258,8 @@ export function usePlayback() {
     setSpeed,
     toggleWaitMode,
     getProgress,
+    setLoopRange,
+    toggleLoop,
+    clearLoop,
   };
 }

@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { usePlayback } from '../../hooks/usePlayback';
 import { useMidiFile } from '../../hooks/useMidiFile';
 import { useMidiInput } from '../../hooks/useMidiInput';
-import { useMidiStore } from '../../stores/midiStore';
+import { useMidiStore, getMeasureCount } from '../../stores/midiStore';
 import styles from './Controls.module.css';
 
 export function Controls() {
@@ -13,12 +13,18 @@ export function Controls() {
     currentTime,
     speed,
     waitMode,
+    loopEnabled,
+    loopStartMeasure,
+    loopEndMeasure,
     togglePlay,
     stop,
     seekToPercent,
     setSpeed,
     toggleWaitMode,
     getProgress,
+    setLoopRange,
+    toggleLoop,
+    clearLoop,
   } = usePlayback();
 
   const { files, currentFile, currentFileId, setCurrentFile, handleFileInput, exportFile } =
@@ -133,6 +139,60 @@ export function Controls() {
           Wait for input
         </label>
       </div>
+
+      {/* Loop controls */}
+      {currentFile && (
+        <div className={styles.section}>
+          <button
+            className={`${styles.button} ${loopEnabled ? styles.active : ''}`}
+            onClick={toggleLoop}
+            title="Toggle loop"
+          >
+            🔁
+          </button>
+          {loopEnabled && (
+            <>
+              <input
+                type="number"
+                className={styles.measureInput}
+                min="1"
+                max={getMeasureCount(currentFile)}
+                value={(loopStartMeasure ?? 0) + 1}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) - 1;
+                  if (!isNaN(val)) {
+                    setLoopRange(Math.max(0, val), loopEndMeasure);
+                  }
+                }}
+                title="Loop start measure"
+              />
+              <span className={styles.loopSeparator}>-</span>
+              <input
+                type="number"
+                className={styles.measureInput}
+                min="1"
+                max={getMeasureCount(currentFile)}
+                value={(loopEndMeasure ?? 0) + 1}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) - 1;
+                  if (!isNaN(val)) {
+                    const maxMeasure = getMeasureCount(currentFile) - 1;
+                    setLoopRange(loopStartMeasure, Math.min(val, maxMeasure));
+                  }
+                }}
+                title="Loop end measure"
+              />
+              <button
+                className={styles.button}
+                onClick={clearLoop}
+                title="Clear loop"
+              >
+                ✕
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Render mode toggle */}
       <div className={styles.section}>

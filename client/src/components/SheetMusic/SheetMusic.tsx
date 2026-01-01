@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   Renderer,
   Stave,
@@ -662,12 +662,20 @@ export function SheetMusic({
   // Store line layout info for scroll-to-seek calculation
   const linesRef = useRef<{ measureIndices: number[]; cumulativeMeasures: number }[]>([]);
 
+  // Store measure positions for click-to-set-loop detection
+  const measurePositionsRef = useRef<{ measureIndex: number; x: number; y: number; width: number; height: number }[]>([]);
+
   // Subscribe to current file and theme for re-rendering
   const currentFileId = useMidiStore((state) => state.currentFileId);
   const files = useMidiStore((state) => state.files);
   const currentFile = files.find((f) => f.id === currentFileId) || null;
   const theme = useMidiStore((state) => state.settings.theme);
   const seek = useMidiStore((state) => state.seek);
+  const setLoopRange = useMidiStore((state) => state.setLoopRange);
+  const loopEnabled = useMidiStore((state) => state.playback.loopEnabled);
+  const loopStartMeasure = useMidiStore((state) => state.playback.loopStartMeasure);
+  const loopEndMeasure = useMidiStore((state) => state.playback.loopEndMeasure);
+  const isPlaying = useMidiStore((state) => state.playback.isPlaying);
 
   const getPlaybackTime = useCallback(() => {
     return useMidiStore.getState().playback.currentTime;
@@ -829,6 +837,7 @@ export function SheetMusic({
 
     // Collect note positions for highlighting
     const notePositions: NotePosition[] = [];
+    const measurePositions: { measureIndex: number; x: number; y: number; width: number; height: number }[] = [];
     const secondsPerQuarterNote = 60 / bpm;
 
     // ============ SECOND PASS: Render each line with proper widths ============
@@ -854,6 +863,15 @@ export function SheetMusic({
         // Calculate stave width: base width + scaling + extra for first measure
         const baseStaveWidth = measureMinWidths[measureIndex] * scaleFactor + measurePadding;
         const staveWidth = isFirstInLine ? baseStaveWidth + clefKeyTimeWidth : baseStaveWidth;
+
+        // Store measure position for click detection
+        measurePositions.push({
+          measureIndex,
+          x,
+          y: baseY,
+          width: staveWidth,
+          height: systemHeight,
+        });
 
         const staves: Stave[] = [];
         const voices: Voice[] = [];
@@ -1070,6 +1088,9 @@ export function SheetMusic({
     // Store note positions for highlighting
     notePositionsRef.current = notePositions;
 
+    // Store measure positions for loop click detection
+    measurePositionsRef.current = measurePositions;
+
     // Store layout info for progress tracking
     const secondsPerMeasure = (60 / bpm) * beatsPerMeasure * (4 / beatValue);
     container.dataset.measureCount = String(measureCount);
@@ -1082,8 +1103,12 @@ export function SheetMusic({
     container.dataset.lineCount = String(lines.length);
   }, [currentFile, beatsPerMeasureProp, theme]);
 
-  // Scroll-to-seek: convert scroll position to playback time
+  // Scroll-to-seek: convert scroll position to playback time (only when paused)
   const handleScroll = useCallback(() => {
+    // Only seek when playback is paused - don't interfere with auto-scroll during playback
+    const isPlaying = useMidiStore.getState().playback.isPlaying;
+    if (isPlaying) return;
+
     const container = containerRef.current;
     const svgContainer = svgContainerRef.current;
     if (!container || !svgContainer || !currentFile) return;
@@ -1131,6 +1156,42 @@ export function SheetMusic({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  // Click handler for setting loop points
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    const container = containerRef.current;
+    const svgContainer = svgContainerRef.current;
+    if (!container || !svgContainer) return;
+
+    const rect = svgContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top + container.scrollTop;
+
+    // Find which measure was clicked
+    const measurePositions = measurePositionsRef.current;
+    let clickedMeasure: number | null = null;
+
+    for (const pos of measurePositions) {
+      if (x >= pos.x && x <= pos.x + pos.width && y >= pos.y && y <= pos.y + pos.height) {
+        clickedMeasure = pos.measureIndex;
+        break;
+      }
+    }
+
+    if (clickedMeasure === null) return;
+
+    // Set loop point
+    const { loopStartMeasure, loopEndMeasure } = useMidiStore.getState().playback;
+    if (loopStartMeasure === null || loopEndMeasure !== null) {
+      // Start fresh - set start
+      setLoopRange(clickedMeasure, null);
+    } else {
+      // Set end (swap if needed)
+      const start = Math.min(loopStartMeasure, clickedMeasure);
+      const end = Math.max(loopStartMeasure, clickedMeasure);
+      setLoopRange(start, end);
+    }
+  }, [setLoopRange]);
+
   // Highlight active notes and auto-scroll
   useEffect(() => {
     const container = containerRef.current;
@@ -1175,16 +1236,23 @@ export function SheetMusic({
 
       // Auto-scroll to keep active notes visible (only if user isn't manually scrolling)
       if (minY !== Infinity && !isUserScrolling.current) {
-        const containerHeight = container.clientHeight;
-        const scrollTarget = minY - containerHeight / 3;
+        const svgContainer = svgContainerRef.current;
+        if (svgContainer) {
+          const systemHeight = parseFloat(svgContainer.dataset.systemHeight || '0');
+          const topMargin = parseFloat(svgContainer.dataset.topMargin || '0');
 
-        // Only scroll if we've moved to a different region
-        if (Math.abs(scrollTarget - lastScrollY) > containerHeight * 0.3) {
-          lastScrollY = scrollTarget;
-          container.scrollTo({
-            top: Math.max(0, scrollTarget),
-            behavior: 'smooth',
-          });
+          // Snap to line boundary - find which line contains the active notes
+          const lineIndex = Math.floor((minY - topMargin) / systemHeight);
+          const scrollTarget = topMargin + lineIndex * systemHeight;
+
+          // Only scroll if we've moved to a different line
+          if (Math.abs(scrollTarget - lastScrollY) > systemHeight * 0.5) {
+            lastScrollY = scrollTarget;
+            container.scrollTo({
+              top: Math.max(0, scrollTarget),
+              behavior: 'smooth',
+            });
+          }
         }
       }
 
@@ -1198,10 +1266,64 @@ export function SheetMusic({
     };
   }, [currentFile, getPlaybackTime, renderedHeight]);
 
+  // Calculate loop overlay positions
+  const loopOverlays = useMemo(() => {
+    if (!loopEnabled || loopStartMeasure === null || loopEndMeasure === null) return [];
+
+    const overlays: { x: number; y: number; width: number; height: number }[] = [];
+    const measurePositions = measurePositionsRef.current;
+
+    for (const pos of measurePositions) {
+      if (pos.measureIndex >= loopStartMeasure && pos.measureIndex <= loopEndMeasure) {
+        overlays.push({ x: pos.x, y: pos.y, width: pos.width, height: pos.height });
+      }
+    }
+    return overlays;
+  }, [loopEnabled, loopStartMeasure, loopEndMeasure, renderedHeight]);
+
+  // Calculate scroll snap points for each line
+  const snapPoints = useMemo(() => {
+    const svgContainer = svgContainerRef.current;
+    if (!svgContainer || renderedHeight === 0) return [];
+
+    const systemHeight = parseFloat(svgContainer.dataset.systemHeight || '0');
+    const topMargin = parseFloat(svgContainer.dataset.topMargin || '0');
+    const lineCount = parseInt(svgContainer.dataset.lineCount || '0', 10);
+
+    if (systemHeight === 0 || lineCount === 0) return [];
+
+    const points: number[] = [];
+    for (let i = 0; i < lineCount; i++) {
+      points.push(topMargin + i * systemHeight);
+    }
+    return points;
+  }, [renderedHeight]);
+
   return (
-    <div ref={containerRef} className={styles.container}>
-      <div ref={svgContainerRef} className={styles.svgContainer}>
+    <div
+      ref={containerRef}
+      className={styles.container}
+      style={isPlaying ? { overflow: 'hidden', scrollSnapType: 'none' } : undefined}
+    >
+      <div ref={svgContainerRef} className={styles.svgContainer} onClick={handleClick}>
         <div ref={highlightsRef} className={styles.highlights} />
+        {/* Scroll snap points for each line */}
+        {snapPoints.map((y, i) => (
+          <div key={`snap-${i}`} className={styles.snapPoint} style={{ top: y }} />
+        ))}
+        {/* Loop range overlay */}
+        {loopOverlays.map((overlay, i) => (
+          <div
+            key={i}
+            className={styles.loopOverlay}
+            style={{
+              left: overlay.x,
+              top: overlay.y,
+              width: overlay.width,
+              height: overlay.height,
+            }}
+          />
+        ))}
       </div>
     </div>
   );

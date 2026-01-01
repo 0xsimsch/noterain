@@ -133,3 +133,24 @@
 .trackItem:hover {
   background: var(--bg-overlay);
 }
+
+.measureInput {
+  width: 50px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.measureInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.loopSeparator {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
