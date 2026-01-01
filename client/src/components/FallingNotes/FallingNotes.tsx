@@ -88,6 +88,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   const [isReady, setIsReady] = useState(false);
 
   const { settings } = useMidiStore();
+  const seek = useMidiStore((state) => state.seek);
   // Use getState() to read values inside animation loop without causing re-renders
   const getPlaybackTime = () => useMidiStore.getState().playback.currentTime;
   const getCurrentFile = () => {
@@ -343,6 +344,39 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
       drawGrid(app, gridGraphics, settings.theme);
     }
   }, [settings.theme, isReady]);
+
+  // Wheel-to-seek: scroll wheel changes playback position
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      e.preventDefault();
+
+      const container = containerRef.current;
+      const file = getCurrentFile();
+      if (!container || !file) return;
+
+      const canvasHeight = container.clientHeight || 600;
+      const pixelsPerSecond = canvasHeight / lookahead;
+
+      // Convert wheel delta to time delta
+      // Positive deltaY (scroll down) = move forward in time
+      const timeDelta = e.deltaY / pixelsPerSecond;
+
+      const currentTime = getPlaybackTime();
+      const newTime = Math.max(0, Math.min(currentTime + timeDelta, file.duration));
+
+      seek(newTime);
+    },
+    [lookahead, seek],
+  );
+
+  // Attach wheel listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   return (
     <div

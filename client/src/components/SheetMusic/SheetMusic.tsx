@@ -655,11 +655,19 @@ export function SheetMusic({
   // Store note positions for highlighting
   const notePositionsRef = useRef<NotePosition[]>([]);
 
+  // Track user scrolling to prevent auto-scroll conflict
+  const isUserScrolling = useRef(false);
+  const scrollTimeout = useRef<number | undefined>(undefined);
+
+  // Store line layout info for scroll-to-seek calculation
+  const linesRef = useRef<{ measureIndices: number[]; cumulativeMeasures: number }[]>([]);
+
   // Subscribe to current file and theme for re-rendering
   const currentFileId = useMidiStore((state) => state.currentFileId);
   const files = useMidiStore((state) => state.files);
   const currentFile = files.find((f) => f.id === currentFileId) || null;
   const theme = useMidiStore((state) => state.settings.theme);
+  const seek = useMidiStore((state) => state.seek);
 
   const getPlaybackTime = useCallback(() => {
     return useMidiStore.getState().playback.currentTime;
@@ -791,6 +799,14 @@ export function SheetMusic({
     if (currentLine.length > 0) {
       lines.push(currentLine);
     }
+
+    // Store line info for scroll-to-seek calculation
+    let cumulativeMeasures = 0;
+    linesRef.current = lines.map((measureIndices) => {
+      const result = { measureIndices, cumulativeMeasures };
+      cumulativeMeasures += measureIndices.length;
+      return result;
+    });
 
     // Height for one "system" (all tracks for one set of measures)
     const systemHeight = enabledTracks.length * singleStaveHeight + trackSpacing;
@@ -1066,6 +1082,55 @@ export function SheetMusic({
     container.dataset.lineCount = String(lines.length);
   }, [currentFile, beatsPerMeasureProp, theme]);
 
+  // Scroll-to-seek: convert scroll position to playback time
+  const handleScroll = useCallback(() => {
+    const container = containerRef.current;
+    const svgContainer = svgContainerRef.current;
+    if (!container || !svgContainer || !currentFile) return;
+
+    // Mark as user scrolling to prevent auto-scroll conflict
+    isUserScrolling.current = true;
+    clearTimeout(scrollTimeout.current);
+    scrollTimeout.current = window.setTimeout(() => {
+      isUserScrolling.current = false;
+    }, 150);
+
+    // Get layout info from dataset
+    const systemHeight = parseFloat(svgContainer.dataset.systemHeight || '0');
+    const topMargin = parseFloat(svgContainer.dataset.topMargin || '0');
+    const secondsPerMeasure = parseFloat(svgContainer.dataset.secondsPerMeasure || '0');
+
+    if (systemHeight === 0 || secondsPerMeasure === 0) return;
+
+    const scrollTop = container.scrollTop;
+
+    // Calculate which line is at the scroll position
+    const lineIndex = Math.max(0, Math.floor((scrollTop - topMargin + systemHeight / 2) / systemHeight));
+
+    // Get measure info from linesRef
+    const lines = linesRef.current;
+    if (lineIndex >= lines.length) return;
+
+    const lineInfo = lines[lineIndex];
+    const measureIndex = lineInfo.cumulativeMeasures;
+
+    // Calculate time from measure index
+    const time = measureIndex * secondsPerMeasure;
+
+    // Clamp to valid range
+    const maxTime = currentFile.duration;
+    seek(Math.max(0, Math.min(time, maxTime)));
+  }, [currentFile, seek]);
+
+  // Attach scroll listener
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
   // Highlight active notes and auto-scroll
   useEffect(() => {
     const container = containerRef.current;
@@ -1108,8 +1173,8 @@ export function SheetMusic({
         }
       }
 
-      // Auto-scroll to keep active notes visible
-      if (minY !== Infinity) {
+      // Auto-scroll to keep active notes visible (only if user isn't manually scrolling)
+      if (minY !== Infinity && !isUserScrolling.current) {
         const containerHeight = container.clientHeight;
         const scrollTarget = minY - containerHeight / 3;
 
