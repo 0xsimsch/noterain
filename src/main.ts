@@ -8,7 +8,9 @@ async function bootstrap() {
   const keyPath = path.join(certsPath, 'key.pem');
   const certPath = path.join(certsPath, 'cert.pem');
 
-  const useHttps = fs.existsSync(keyPath) && fs.existsSync(certPath);
+  const forceHttp = process.env.FORCE_HTTP === 'true';
+  const useHttps =
+    !forceHttp && fs.existsSync(keyPath) && fs.existsSync(certPath);
 
   const httpsOptions = useHttps
     ? {
