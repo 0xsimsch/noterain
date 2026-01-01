@@ -118,25 +118,53 @@ export const useMidiStore = create<MidiStore>()(
         loopEndMeasure: null,
       },
 
-      play: () =>
-        set((state) => ({
-          playback: { ...state.playback, isPlaying: true },
-        })),
+      play: () => {
+        const state = get();
+        let currentTime = state.playback.currentTime;
+
+        // If loop is active and current position is outside loop range, jump to loop start
+        if (state.playback.loopEnabled &&
+            state.playback.loopStartMeasure !== null &&
+            state.playback.loopEndMeasure !== null) {
+          const file = state.files.find((f) => f.id === state.currentFileId);
+          if (file) {
+            const loopStartTime = getMeasureTime(file, state.playback.loopStartMeasure);
+            const loopEndTime = getMeasureTime(file, state.playback.loopEndMeasure + 1);
+            if (currentTime < loopStartTime || currentTime >= loopEndTime) {
+              currentTime = loopStartTime;
+            }
+          }
+        }
+
+        set({
+          playback: { ...state.playback, isPlaying: true, currentTime },
+        });
+      },
 
       pause: () =>
         set((state) => ({
           playback: { ...state.playback, isPlaying: false },
         })),
 
-      stop: () =>
-        set((state) => ({
+      stop: () => {
+        const state = get();
+        // If loop is active, reset to loop start instead of beginning
+        let resetTime = 0;
+        if (state.playback.loopEnabled && state.playback.loopStartMeasure !== null) {
+          const file = state.files.find((f) => f.id === state.currentFileId);
+          if (file) {
+            resetTime = getMeasureTime(file, state.playback.loopStartMeasure);
+          }
+        }
+        set({
           playback: {
             ...state.playback,
             isPlaying: false,
-            currentTime: 0,
+            currentTime: resetTime,
             activeNotes: new Set(),
           },
-        })),
+        });
+      },
 
       seek: (time) =>
         set((state) => ({
@@ -176,21 +204,63 @@ export const useMidiStore = create<MidiStore>()(
         }),
 
       // Loop
-      setLoopRange: (start, end) =>
-        set((state) => ({
+      setLoopRange: (start, end) => {
+        const state = get();
+        // Ensure end is at least start + 1
+        let adjustedEnd = end;
+        if (start !== null && end !== null && end < start + 1) {
+          adjustedEnd = start + 1;
+        }
+        // Seek to loop start when start measure changes
+        let seekTime: number | null = null;
+        if (start !== null && start !== state.playback.loopStartMeasure) {
+          const file = state.files.find((f) => f.id === state.currentFileId);
+          if (file) {
+            seekTime = getMeasureTime(file, start);
+          }
+        }
+        set({
           playback: {
             ...state.playback,
             loopStartMeasure: start,
-            loopEndMeasure: end,
+            loopEndMeasure: adjustedEnd,
             // Auto-enable loop when both are set
-            loopEnabled: start !== null && end !== null ? true : state.playback.loopEnabled,
+            loopEnabled: start !== null && adjustedEnd !== null ? true : state.playback.loopEnabled,
+            ...(seekTime !== null ? { currentTime: seekTime } : {}),
           },
-        })),
+        });
+      },
 
-      toggleLoop: () =>
-        set((state) => ({
-          playback: { ...state.playback, loopEnabled: !state.playback.loopEnabled },
-        })),
+      toggleLoop: () => {
+        const state = get();
+        const enabling = !state.playback.loopEnabled;
+        // When enabling loop, set default values if not already set (end = start + 1)
+        const loopStartMeasure = enabling && state.playback.loopStartMeasure === null
+          ? 0
+          : state.playback.loopStartMeasure;
+        const loopEndMeasure = enabling && state.playback.loopEndMeasure === null
+          ? 1
+          : state.playback.loopEndMeasure;
+
+        // Calculate seek time if enabling and we have a file
+        let seekTime: number | null = null;
+        if (enabling && loopStartMeasure !== null) {
+          const file = state.files.find((f) => f.id === state.currentFileId);
+          if (file) {
+            seekTime = getMeasureTime(file, loopStartMeasure);
+          }
+        }
+
+        set({
+          playback: {
+            ...state.playback,
+            loopEnabled: enabling,
+            loopStartMeasure,
+            loopEndMeasure,
+            ...(seekTime !== null ? { currentTime: seekTime } : {}),
+          },
+        });
+      },
 
       clearLoop: () =>
         set((state) => ({

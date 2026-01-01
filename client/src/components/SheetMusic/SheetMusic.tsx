@@ -671,7 +671,6 @@ export function SheetMusic({
   const currentFile = files.find((f) => f.id === currentFileId) || null;
   const theme = useMidiStore((state) => state.settings.theme);
   const seek = useMidiStore((state) => state.seek);
-  const setLoopRange = useMidiStore((state) => state.setLoopRange);
   const loopEnabled = useMidiStore((state) => state.playback.loopEnabled);
   const loopStartMeasure = useMidiStore((state) => state.playback.loopStartMeasure);
   const loopEndMeasure = useMidiStore((state) => state.playback.loopEndMeasure);
@@ -1156,42 +1155,6 @@ export function SheetMusic({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
-  // Click handler for setting loop points
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    const container = containerRef.current;
-    const svgContainer = svgContainerRef.current;
-    if (!container || !svgContainer) return;
-
-    const rect = svgContainer.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top + container.scrollTop;
-
-    // Find which measure was clicked
-    const measurePositions = measurePositionsRef.current;
-    let clickedMeasure: number | null = null;
-
-    for (const pos of measurePositions) {
-      if (x >= pos.x && x <= pos.x + pos.width && y >= pos.y && y <= pos.y + pos.height) {
-        clickedMeasure = pos.measureIndex;
-        break;
-      }
-    }
-
-    if (clickedMeasure === null) return;
-
-    // Set loop point
-    const { loopStartMeasure, loopEndMeasure } = useMidiStore.getState().playback;
-    if (loopStartMeasure === null || loopEndMeasure !== null) {
-      // Start fresh - set start
-      setLoopRange(clickedMeasure, null);
-    } else {
-      // Set end (swap if needed)
-      const start = Math.min(loopStartMeasure, clickedMeasure);
-      const end = Math.max(loopStartMeasure, clickedMeasure);
-      setLoopRange(start, end);
-    }
-  }, [setLoopRange]);
-
   // Highlight active notes and auto-scroll
   useEffect(() => {
     const container = containerRef.current;
@@ -1305,7 +1268,7 @@ export function SheetMusic({
       className={styles.container}
       style={isPlaying ? { overflow: 'hidden', scrollSnapType: 'none' } : undefined}
     >
-      <div ref={svgContainerRef} className={styles.svgContainer} onClick={handleClick}>
+      <div ref={svgContainerRef} className={styles.svgContainer}>
         <div ref={highlightsRef} className={styles.highlights} />
         {/* Scroll snap points for each line */}
         {snapPoints.map((y, i) => (
