@@ -85,3 +85,15 @@
   pointer-events: none;
   white-space: nowrap;
 }
+
+.blackLabel {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  color: #aaa;
+  font-family: system-ui, -apple-system, sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+}

@@ -26,6 +26,10 @@ export interface MidiTrack {
   notes: MidiNote[];
   /** Whether this track is currently visible/enabled */
   enabled: boolean;
+  /** When true, render visually but don't play audio or wait for input */
+  renderOnly: boolean;
+  /** When true, play audio for this track even when disabled */
+  playAudio: boolean;
   /** Color for visualization */
   color: string;
 }

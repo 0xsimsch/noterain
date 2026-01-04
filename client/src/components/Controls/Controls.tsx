@@ -286,7 +286,7 @@ export function Controls() {
           <label className={styles.label}>Tracks:</label>
           <div className={styles.trackList}>
             {currentFile.tracks.map((track) => (
-              <label
+              <div
                 key={track.index}
                 className={styles.trackItem}
                 style={{ borderLeftColor: track.color }}
@@ -298,8 +298,31 @@ export function Controls() {
                     useMidiStore.getState().toggleTrack(currentFile.id, track.index)
                   }
                 />
-                {track.name}
-              </label>
+                <span className={styles.trackName}>{track.name}</span>
+                <button
+                  className={`${styles.trackButton} ${(track.renderOnly || track.enabled) ? styles.active : styles.crossed}`}
+                  onClick={() =>
+                    useMidiStore.getState().toggleTrackRenderOnly(currentFile.id, track.index)
+                  }
+                  title={track.renderOnly ? 'Hide track' : 'Show track visually'}
+                  disabled={track.enabled}
+                >
+                  👁
+                </button>
+                <button
+                  className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
+                  onClick={() =>
+                    useMidiStore.getState().toggleTrackPlayAudio(currentFile.id, track.index)
+                  }
+                  title={track.playAudio ? 'Mute track' : 'Play track audio'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                    {track.playAudio && <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>}
+                    {!track.playAudio && <path d="M19 12l-4-4m0 8l4-4" stroke="currentColor" strokeWidth="2" fill="none"/>}
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
         </div>

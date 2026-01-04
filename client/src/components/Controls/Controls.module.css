@@ -127,11 +127,53 @@
   border-left: 3px solid;
   font-size: 12px;
   color: var(--text-secondary);
-  cursor: pointer;
 }
 
 .trackItem:hover {
   background: var(--bg-overlay);
+}
+
+.trackName {
+  cursor: pointer;
+}
+
+.trackButton {
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.3;
+  font-size: 12px;
+  line-height: 1;
+  position: relative;
+}
+
+.trackButton:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.trackButton.active {
+  opacity: 1;
+}
+
+.trackButton.crossed::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  height: 2px;
+  background: var(--text-secondary);
+  transform: rotate(-45deg);
+}
+
+.trackButton:disabled {
+  cursor: default;
+  opacity: 0.15;
+}
+
+.trackButton:disabled.crossed::after {
+  display: none;
 }
 
 .measureInput {

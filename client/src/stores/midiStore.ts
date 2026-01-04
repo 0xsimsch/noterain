@@ -62,6 +62,8 @@ interface MidiStore {
 
   // Track visibility
   toggleTrack: (fileId: string, trackIndex: number) => void;
+  toggleTrackRenderOnly: (fileId: string, trackIndex: number) => void;
+  toggleTrackPlayAudio: (fileId: string, trackIndex: number) => void;
 }
 
 export const useMidiStore = create<MidiStore>()(
@@ -334,6 +336,38 @@ export const useMidiStore = create<MidiStore>()(
               : f,
           ),
         })),
+
+      toggleTrackRenderOnly: (fileId, trackIndex) =>
+        set((state) => ({
+          files: state.files.map((f) =>
+            f.id === fileId
+              ? {
+                  ...f,
+                  tracks: f.tracks.map((t) =>
+                    t.index === trackIndex
+                      ? { ...t, renderOnly: !t.renderOnly }
+                      : t,
+                  ),
+                }
+              : f,
+          ),
+        })),
+
+      toggleTrackPlayAudio: (fileId, trackIndex) =>
+        set((state) => ({
+          files: state.files.map((f) =>
+            f.id === fileId
+              ? {
+                  ...f,
+                  tracks: f.tracks.map((t) =>
+                    t.index === trackIndex
+                      ? { ...t, playAudio: !t.playAudio }
+                      : t,
+                  ),
+                }
+              : f,
+          ),
+        })),
     }),
     {
       name: 'piano-storage',
@@ -356,7 +390,7 @@ export function getVisibleNotes(
   const notes: MidiNote[] = [];
 
   for (const track of file.tracks) {
-    if (!track.enabled) continue;
+    if (!track.enabled && !track.renderOnly) continue;
     for (const note of track.notes) {
       const noteEnd = note.startTime + note.duration;
       if (noteEnd >= currentTime && note.startTime <= currentTime + lookahead) {
@@ -383,7 +417,7 @@ export function getActiveNotesAtTime(file: MidiFile, time: number): MidiNote[] {
 }
 
 /** Grace period in seconds for early note hits in wait mode */
-export const WAIT_MODE_GRACE_PERIOD = 0.15;
+export const WAIT_MODE_GRACE_PERIOD = 0.05;
 
 /** Get notes that should be considered for wait mode (including upcoming notes within grace period) */
 export function getWaitModeNotes(file: MidiFile, time: number): MidiNote[] {

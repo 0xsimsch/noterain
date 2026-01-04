@@ -377,11 +377,16 @@ function groupNotesIntoMeasures(
   return measures;
 }
 
-/** Convert hex color to VexFlow color format */
-function hexToRgb(hex: string): string {
+/** Convert hex color to VexFlow color format with optional alpha */
+function hexToRgba(hex: string, alpha: number = 1): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (result) {
-    return `rgb(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)})`;
+    const r = parseInt(result[1], 16);
+    const g = parseInt(result[2], 16);
+    const b = parseInt(result[3], 16);
+    return alpha < 1
+      ? `rgba(${r}, ${g}, ${b}, ${alpha})`
+      : `rgb(${r}, ${g}, ${b})`;
   }
   return hex;
 }
@@ -695,9 +700,9 @@ export function SheetMusic({
     const existingSvg = container.querySelector('svg');
     if (existingSvg) existingSvg.remove();
 
-    // Get enabled tracks with notes
+    // Get enabled tracks with notes (including render-only tracks)
     const enabledTracks = currentFile.tracks.filter(
-      (t) => t.enabled && t.notes.length > 0,
+      (t) => (t.enabled || t.renderOnly) && t.notes.length > 0,
     );
 
     if (enabledTracks.length === 0) {
@@ -946,7 +951,8 @@ export function SheetMusic({
           // Create VexFlow notes
           const staveNotes: (StaveNote | GhostNote)[] = [];
           const noteTimings: { startTime: number; endTime: number; staveNoteIndex: number }[] = [];
-          const trackColor = hexToRgb(track.color);
+          const isRenderOnly = !track.enabled && track.renderOnly;
+          const trackColor = hexToRgba(track.color, isRenderOnly ? 0.35 : 1);
           let currentBeat = 0;
 
           for (const beatKey of unifiedBeatGrid) {
@@ -1162,7 +1168,7 @@ export function SheetMusic({
     if (!container || !highlights) return;
 
     let animationId: number;
-    let lastScrollY = -1;
+    let lastLineIndex = -1;
 
     const updateHighlights = () => {
       if (!currentFile) {
@@ -1177,12 +1183,8 @@ export function SheetMusic({
       highlights.innerHTML = '';
 
       // Find and highlight active notes
-      let minY = Infinity;
-      let maxY = 0;
-
       for (const pos of notePositions) {
         if (currentTime >= pos.startTime && currentTime < pos.endTime) {
-          // Create highlight element
           const highlight = document.createElement('div');
           highlight.className = styles.noteHighlight;
           highlight.style.left = `${pos.x - 4}px`;
@@ -1190,31 +1192,44 @@ export function SheetMusic({
           highlight.style.width = `${pos.width + 8}px`;
           highlight.style.height = `${pos.height + 8}px`;
           highlights.appendChild(highlight);
-
-          // Track Y range for scrolling
-          minY = Math.min(minY, pos.y);
-          maxY = Math.max(maxY, pos.y + pos.height);
         }
       }
 
-      // Auto-scroll to keep active notes visible (only if user isn't manually scrolling)
-      if (minY !== Infinity && !isUserScrolling.current) {
+      // Auto-scroll based on current measure (not note Y position)
+      if (!isUserScrolling.current) {
         const svgContainer = svgContainerRef.current;
         if (svgContainer) {
           const systemHeight = parseFloat(svgContainer.dataset.systemHeight || '0');
           const topMargin = parseFloat(svgContainer.dataset.topMargin || '0');
+          const secondsPerMeasure = parseFloat(svgContainer.dataset.secondsPerMeasure || '0');
 
-          // Snap to line boundary - find which line contains the active notes
-          const lineIndex = Math.floor((minY - topMargin) / systemHeight);
-          const scrollTarget = topMargin + lineIndex * systemHeight;
+          if (systemHeight > 0 && secondsPerMeasure > 0) {
+            // Calculate current measure from time
+            const currentMeasure = Math.floor(currentTime / secondsPerMeasure);
 
-          // Only scroll if we've moved to a different line
-          if (Math.abs(scrollTarget - lastScrollY) > systemHeight * 0.5) {
-            lastScrollY = scrollTarget;
-            container.scrollTo({
-              top: Math.max(0, scrollTarget),
-              behavior: 'smooth',
-            });
+            // Find which line contains this measure
+            const lines = linesRef.current;
+            let lineIndex = 0;
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].measureIndices.includes(currentMeasure)) {
+                lineIndex = i;
+                break;
+              }
+              // If measure is past this line's measures, keep looking
+              if (i < lines.length - 1 && currentMeasure > lines[i].measureIndices[lines[i].measureIndices.length - 1]) {
+                lineIndex = i + 1;
+              }
+            }
+
+            // Only scroll when we move to a different line
+            if (lineIndex !== lastLineIndex) {
+              lastLineIndex = lineIndex;
+              const scrollTarget = topMargin + lineIndex * systemHeight;
+              container.scrollTo({
+                top: Math.max(0, scrollTarget),
+                behavior: 'smooth',
+              });
+            }
           }
         }
       }

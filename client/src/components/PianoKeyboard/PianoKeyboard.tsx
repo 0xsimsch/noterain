@@ -141,9 +141,9 @@ export function PianoKeyboard({
         onTouchEnd={() => handleMouseUp(key.noteNumber)}
         data-note={key.noteName}
       >
-        {!isBlack && key.noteName.startsWith('C') && (
-          <span className={styles.label}>{key.noteName}</span>
-        )}
+        <span className={isBlack ? styles.blackLabel : styles.label}>
+          {key.noteName.replace(/\d+$/, '')}
+        </span>
       </div>
     );
   };

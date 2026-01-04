@@ -141,9 +141,9 @@ export function usePlayback() {
         // All notes were played - continue advancing
       }
 
-      // Find newly started notes
+      // Find newly started notes (only play audio for tracks with playAudio enabled)
       for (const track of file.tracks) {
-        if (!track.enabled) continue;
+        if (!track.playAudio) continue;
 
         for (const note of track.notes) {
           const noteKey = `${note.track}-${note.noteNumber}-${note.startTime}`;

@@ -213,6 +213,8 @@ function extractTracks(
         instrument,
         notes: notes.sort((a, b) => a.startTime - b.startTime),
         enabled: true,
+        renderOnly: false,
+        playAudio: true,
         color: TRACK_COLORS[tracks.length % TRACK_COLORS.length],
       });
     }
@@ -305,6 +307,8 @@ export function createEmptyMidiFile(name: string): MidiFile {
         instrument: 'Piano',
         notes: [],
         enabled: true,
+        renderOnly: false,
+        playAudio: true,
         color: TRACK_COLORS[0],
       },
     ],

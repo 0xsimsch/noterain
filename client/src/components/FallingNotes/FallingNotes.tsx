@@ -1,11 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Application, Graphics, Container } from 'pixi.js';
+import { Application, Graphics, Container, Text, TextStyle } from 'pixi.js';
 import { useMidiStore, getVisibleNotes } from '../../stores/midiStore';
 import {
   PIANO_MIN_NOTE,
   PIANO_MAX_NOTE,
   isBlackKey,
   getPitchColor,
+  NOTE_NAMES,
 } from '../../types/midi';
 
 interface FallingNotesProps {
@@ -44,8 +45,8 @@ function drawGrid(app: Application, graphics: Graphics, theme: string) {
   graphics.clear();
 
   const isLight = theme === 'latte';
-  const lineColor = isLight ? 0x9ca0b0 : 0x45475a;
-  const blackKeyBg = isLight ? 0xdce0e8 : 0x1e1e2e;
+  const lineColor = isLight ? 0xc8c2b8 : 0x3d3632;
+  const blackKeyBg = isLight ? 0xebe7e0 : 0x1e1b18;
 
   // Draw background shading for black key lanes
   for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
@@ -83,7 +84,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   const appRef = useRef<Application | null>(null);
   const notesContainerRef = useRef<Container | null>(null);
   const gridGraphicsRef = useRef<Graphics | null>(null);
-  const noteGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const noteGraphicsRef = useRef<Map<string, { graphics: Graphics; text: Text; accidentalText: Text | null }>>(new Map());
   const renderNotesRef = useRef<() => void>(() => {});
   const [isReady, setIsReady] = useState(false);
 
@@ -110,7 +111,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
       try {
         // Get theme-appropriate background color
         const theme = useMidiStore.getState().settings.theme;
-        const bgColor = theme === 'latte' ? 0xe6e9ef : 0x181825;
+        const bgColor = theme === 'latte' ? 0xf5f2ed : 0x171411;
 
         await app.init({
           backgroundColor: bgColor,
@@ -161,8 +162,10 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
       setIsReady(false);
 
       // Clear note graphics
-      for (const graphics of noteGraphics.values()) {
+      for (const { graphics, text, accidentalText } of noteGraphics.values()) {
         graphics.destroy();
+        text.destroy();
+        accidentalText?.destroy();
       }
       noteGraphics.clear();
       notesContainerRef.current = null;
@@ -211,13 +214,47 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
       const noteKey = `${note.track}-${note.noteNumber}-${note.startTime}`;
       visibleNoteKeys.add(noteKey);
 
-      // Get or create graphics for this note
-      let graphics = noteGraphicsRef.current.get(noteKey);
-      if (!graphics) {
-        graphics = new Graphics();
+      // Get or create graphics and text for this note
+      let noteObj = noteGraphicsRef.current.get(noteKey);
+      if (!noteObj) {
+        const graphics = new Graphics();
+        const noteName = NOTE_NAMES[note.noteNumber % 12];
+        const letter = noteName[0]; // Just the letter (C, D, E, etc.)
+        const accidental = noteName.length > 1 ? noteName.slice(1) : null; // # or b if present
+
+        // Theme-based text color
+        const textColor = settings.theme === 'latte' ? '#1e1e2e' : '#cdd6f4';
+
+        const textStyle = new TextStyle({
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          fontSize: 12,
+          fontWeight: 'bold',
+          fill: textColor,
+        });
+        const text = new Text({ text: letter, style: textStyle });
+        text.anchor.set(0.5, 0);
         notesContainer.addChild(graphics);
-        noteGraphicsRef.current.set(noteKey, graphics);
+        notesContainer.addChild(text);
+
+        // Create accidental text if needed
+        let accidentalText: Text | null = null;
+        if (accidental) {
+          const accidentalStyle = new TextStyle({
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: 9,
+            fontWeight: 'bold',
+            fill: textColor,
+          });
+          accidentalText = new Text({ text: accidental, style: accidentalStyle });
+          accidentalText.anchor.set(0.5, 0);
+          notesContainer.addChild(accidentalText);
+        }
+
+        noteObj = { graphics, text, accidentalText };
+        noteGraphicsRef.current.set(noteKey, noteObj);
       }
+
+      const { graphics, text, accidentalText } = noteObj;
 
       // Calculate position
       const { x: noteX, width: noteWidth } = getNoteX(note.noteNumber);
@@ -230,13 +267,16 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         canvasHeight - (timeUntilNote + note.duration) * pixelsPerSecond;
       const h = note.duration * pixelsPerSecond;
 
+      // Get track info for color and render-only state
+      const track = file.tracks.find((t) => t.index === note.track);
+      const isRenderOnly = track ? !track.enabled && track.renderOnly : false;
+
       // Get color based on color mode
       let color: string;
       if (settings.noteColorMode === 'pitch') {
         color = getPitchColor(note.noteNumber);
       } else {
         // Track mode: use track color or hand-based fallback
-        const track = file.tracks.find((t) => t.index === note.track);
         color =
           track?.color ||
           (note.noteNumber < 60
@@ -252,25 +292,49 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         note.startTime <= currentTime &&
         note.startTime + note.duration > currentTime;
 
+      // Reduce opacity for render-only tracks
+      const baseAlpha = isRenderOnly ? 0.35 : isActive ? 1 : 0.85;
+
       // Draw the note
       graphics.clear();
       graphics
         .roundRect(x + 1, y, w, Math.max(h, 4), 4)
-        .fill({ color: colorNum, alpha: isActive ? 1 : 0.85 });
+        .fill({ color: colorNum, alpha: baseAlpha });
 
-      // Add glow effect for active notes
-      if (isActive) {
+      // Add glow effect for active notes (but not for render-only)
+      if (isActive && !isRenderOnly) {
         graphics
           .roundRect(x - 1, y - 2, w + 4, h + 4, 6)
           .fill({ color: colorNum, alpha: 0.3 });
       }
+
+      // Position the text label at bottom of note
+      text.x = x + 1 + w / 2;
+      text.y = y + h - (accidentalText ? 24 : 16);
+      text.alpha = baseAlpha;
+      // Only show text if note is tall enough
+      text.visible = h > (accidentalText ? 30 : 20);
+
+      // Position accidental underneath the letter
+      if (accidentalText) {
+        accidentalText.x = x + 1 + w / 2;
+        accidentalText.y = y + h - 12;
+        accidentalText.alpha = baseAlpha;
+        accidentalText.visible = h > 30;
+      }
     }
 
     // Remove notes that are no longer visible
-    for (const [key, graphics] of noteGraphicsRef.current) {
+    for (const [key, noteObj] of noteGraphicsRef.current) {
       if (!visibleNoteKeys.has(key)) {
-        notesContainer.removeChild(graphics);
-        graphics.destroy();
+        notesContainer.removeChild(noteObj.graphics);
+        notesContainer.removeChild(noteObj.text);
+        if (noteObj.accidentalText) {
+          notesContainer.removeChild(noteObj.accidentalText);
+          noteObj.accidentalText.destroy();
+        }
+        noteObj.graphics.destroy();
+        noteObj.text.destroy();
         noteGraphicsRef.current.delete(key);
       }
     }
@@ -281,6 +345,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
     settings.leftHandColor,
     settings.rightHandColor,
     settings.noteColorMode,
+    settings.theme,
   ]);
 
   // Keep ref updated with latest renderNotes
@@ -334,14 +399,30 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   useEffect(() => {
     const app = appRef.current;
     const gridGraphics = gridGraphicsRef.current;
+    const notesContainer = notesContainerRef.current;
     if (!app || !isReady) return;
 
-    const bgColor = settings.theme === 'latte' ? 0xe6e9ef : 0x181825;
+    const bgColor = settings.theme === 'latte' ? 0xf5f2ed : 0x171411;
     app.renderer.background.color = bgColor;
 
     // Redraw grid with new theme colors
     if (gridGraphics) {
       drawGrid(app, gridGraphics, settings.theme);
+    }
+
+    // Clear cached notes so they get recreated with new theme colors
+    if (notesContainer) {
+      for (const noteObj of noteGraphicsRef.current.values()) {
+        notesContainer.removeChild(noteObj.graphics);
+        notesContainer.removeChild(noteObj.text);
+        if (noteObj.accidentalText) {
+          notesContainer.removeChild(noteObj.accidentalText);
+          noteObj.accidentalText.destroy();
+        }
+        noteObj.graphics.destroy();
+        noteObj.text.destroy();
+      }
+      noteGraphicsRef.current.clear();
     }
   }, [settings.theme, isReady]);
 
