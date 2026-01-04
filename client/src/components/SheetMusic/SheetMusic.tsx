@@ -760,10 +760,10 @@ export function SheetMusic({
     const trackSpacing = 20;
     const topMargin = 40;
     const clefKeyTimeWidth = 80; // Extra space for clef, key sig, time sig on first measure of line
-    const measurePadding = 30; // Padding between measures
+    const measurePadding = 20; // Padding between measures
 
-    // ============ FIRST PASS: Calculate minimum widths for all measures ============
-    const measureMinWidths: number[] = [];
+    // ============ FIRST PASS: Calculate max minimum width across all measures ============
+    let maxMinWidth = 40; // minimum baseline
     for (let measureIndex = 0; measureIndex < measureCount; measureIndex++) {
       const { voices } = createVoicesForMeasure(
         trackMeasures,
@@ -780,36 +780,24 @@ export function SheetMusic({
           const formatter = new Formatter();
           voices.forEach((v) => formatter.joinVoices([v]));
           const minWidth = formatter.preCalculateMinTotalWidth(voices);
-          measureMinWidths.push(Math.max(minWidth, 60)); // Minimum 60px per measure
+          maxMinWidth = Math.max(maxMinWidth, minWidth);
         } catch {
-          measureMinWidths.push(100); // Default for measures that fail
+          // ignore
         }
-      } else {
-        measureMinWidths.push(60); // Default for empty measures
       }
     }
+    // ============ LAYOUT: Group measures into lines ============
+    const availableWidth = totalAvailableWidth - leftMargin * 2 - clefKeyTimeWidth;
+    // Calculate base measures per line, then add extra to compress spacing
+    const baseMeasuresPerLine = Math.floor(availableWidth / (maxMinWidth + measurePadding));
+    const extraMeasures = 2; // Add extra measures per line to compress notes
+    const measuresPerLine = Math.max(1, baseMeasuresPerLine + extraMeasures);
 
-    // ============ LAYOUT: Group measures into lines based on actual widths ============
     const lines: number[][] = [];
-    let currentLine: number[] = [];
-    let currentLineWidth = clefKeyTimeWidth; // First measure needs extra space for clef/key/time
-
-    for (let i = 0; i < measureCount; i++) {
-      const measureWidth = measureMinWidths[i] + measurePadding;
-
-      // Check if this measure fits on current line
-      if (currentLineWidth + measureWidth > totalAvailableWidth - leftMargin * 2 && currentLine.length > 0) {
-        // Start new line
-        lines.push(currentLine);
-        currentLine = [i];
-        currentLineWidth = clefKeyTimeWidth + measureWidth;
-      } else {
-        currentLine.push(i);
-        currentLineWidth += measureWidth;
-      }
-    }
-    if (currentLine.length > 0) {
-      lines.push(currentLine);
+    for (let i = 0; i < measureCount; i += measuresPerLine) {
+      lines.push(
+        Array.from({ length: Math.min(measuresPerLine, measureCount - i) }, (_, j) => i + j)
+      );
     }
 
     // Store line info for scroll-to-seek calculation
@@ -844,19 +832,16 @@ export function SheetMusic({
     const measurePositions: { measureIndex: number; x: number; y: number; width: number; height: number }[] = [];
     const secondsPerQuarterNote = 60 / bpm;
 
-    // ============ SECOND PASS: Render each line with proper widths ============
+    // ============ SECOND PASS: Render each line with uniform measure widths ============
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const measureIndices = lines[lineIndex];
       const baseY = topMargin + lineIndex * systemHeight;
 
-      // Calculate total min width for this line's measures
-      const totalMinWidth = measureIndices.reduce((sum, i) => sum + measureMinWidths[i], 0);
-
-      // Calculate available width for notes (excluding clef/key/time space on first measure)
-      const availableForNotes = totalAvailableWidth - leftMargin * 2 - clefKeyTimeWidth;
-
-      // Scale factor to fill available width (justify measures)
-      const scaleFactor = Math.max(1, availableForNotes / (totalMinWidth + measureIndices.length * measurePadding));
+      // Calculate uniform width for all measures on this line
+      const totalLineWidth = totalAvailableWidth - leftMargin * 2;
+      const numMeasures = measureIndices.length;
+      // Distribute width equally, accounting for clef/key/time on first measure
+      const baseStaveWidth = (totalLineWidth - clefKeyTimeWidth) / numMeasures;
 
       let x = leftMargin;
 
@@ -864,8 +849,7 @@ export function SheetMusic({
         const measureIndex = measureIndices[posInLine];
         const isFirstInLine = posInLine === 0;
 
-        // Calculate stave width: base width + scaling + extra for first measure
-        const baseStaveWidth = measureMinWidths[measureIndex] * scaleFactor + measurePadding;
+        // All measures get equal width, first one gets extra space for clef/key/time
         const staveWidth = isFirstInLine ? baseStaveWidth + clefKeyTimeWidth : baseStaveWidth;
 
         // Store measure position for click detection
@@ -1037,11 +1021,12 @@ export function SheetMusic({
           try {
             const noteStartX = staves[0].getNoteStartX();
             const noteEndX = Math.min(...staves.map((s) => s.getNoteEndX()));
-            const usableWidth = noteEndX - noteStartX;
+            const endPadding = 15; // Padding at end of measure
+            const usableWidth = noteEndX - noteStartX - endPadding;
 
-            const formatter = new Formatter({ softmaxFactor: 5 }); // Lower value = more spacious
+            const formatter = new Formatter({ softmaxFactor: 10 }); // Higher value = tighter spacing
             voices.forEach((v) => formatter.joinVoices([v]));
-            formatter.format(voices, usableWidth);
+            formatter.format(voices, Math.max(usableWidth, 20));
 
             voiceData.forEach(({ voice, stave, staveNotes, noteTimings }) => {
               const beamGroups = getBeamGroupsForTimeSignature(beatsPerMeasure, beatValue);
