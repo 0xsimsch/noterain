@@ -1,4 +1,6 @@
-# Piano
+# NoteRain
+
+**[noterain.app](https://noterain.app)**
 
 A modern web-based MIDI player and piano learning tool with falling notes visualization, sheet music rendering, and MIDI keyboard support.
 
