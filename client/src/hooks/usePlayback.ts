@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useMidiStore, getActiveNotesAtTime, getWaitModeNotes, getMeasureTime } from '../stores/midiStore';
+import { useMidiStore, getActiveNotesAtTime, getMeasureTime } from '../stores/midiStore';
 import { useAudioEngine } from './useAudioEngine';
 
 /** Hook for MIDI playback control */
@@ -15,7 +15,7 @@ export function usePlayback() {
     setActiveNotes,
     getCurrentFile,
     clearSatisfiedWaitNotes,
-    pruneStatisfiedWaitNotes,
+    clearExpiredSatisfiedWaitNotes,
     setLoopRange,
     toggleLoop,
     clearLoop,
@@ -117,19 +117,16 @@ export function usePlayback() {
       // Use activeNotes (no grace period) for determining WHEN to wait
       // The grace period in getWaitModeNotes is only for accepting early hits
       if (state.playback.waitMode && activeNotes.length > 0) {
-        // Get notes including grace period for checking satisfied status
-        const waitModeNotes = getWaitModeNotes(file, newTime);
-        const requiredNotes = waitModeNotes.map((n) => n.noteNumber);
-
-        // Remove satisfied notes that are no longer required
-        pruneStatisfiedWaitNotes(requiredNotes);
+        // Clear satisfied notes whose note instance has ended
+        clearExpiredSatisfiedWaitNotes(activeNotes);
 
         // Check if all CURRENTLY ACTIVE notes have been played
-        // (not upcoming notes within grace period)
+        // Each note must be satisfied by a keypress that matched its specific startTime
         const satisfiedNotes = useMidiStore.getState().satisfiedWaitNotes;
-        const allPlayed = [...activeNoteNumbers].every((note) =>
-          satisfiedNotes.has(note),
-        );
+        const allPlayed = activeNotes.every((note) => {
+          const satisfiedStartTime = satisfiedNotes.get(note.noteNumber);
+          return satisfiedStartTime === note.startTime;
+        });
 
         if (!allPlayed) {
           // Don't advance time - keep currentTimeRef at prevTime
@@ -190,7 +187,7 @@ export function usePlayback() {
     setActiveNotes,
     playNote,
     clearSatisfiedWaitNotes,
-    pruneStatisfiedWaitNotes,
+    clearExpiredSatisfiedWaitNotes,
   ]);
 
   // Reset scheduled notes when stopping

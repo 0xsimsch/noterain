@@ -50,6 +50,16 @@ export function useMidiInput() {
 
     async function init() {
       try {
+        // Ensure WebMidi is disabled before enabling (Firefox workaround)
+        if (WebMidi.enabled) {
+          await WebMidi.disable();
+        }
+
+        // Small delay to let browser settle after page load (Firefox workaround)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        if (!mounted) return;
+
         await WebMidi.enable({ sysex: false });
         console.log('[MidiInput] WebMidi enabled successfully');
 
@@ -62,6 +72,16 @@ export function useMidiInput() {
         // Update device list
         updateDevices();
 
+        // Auto-select first hardware device if none selected or selected device not found
+        const currentSelected = useMidiStore.getState().selectedInputId;
+        const hardwareInputs = getHardwareInputs();
+        const selectedStillExists = hardwareInputs.some((i) => i.id === currentSelected);
+
+        if (hardwareInputs.length > 0 && (!currentSelected || !selectedStillExists)) {
+          console.log('[MidiInput] Auto-selecting hardware device:', hardwareInputs[0].name);
+          selectInput(hardwareInputs[0].id);
+        }
+
         // Signal that WebMidi is ready
         setIsWebMidiReady(true);
 
@@ -73,6 +93,11 @@ export function useMidiInput() {
         startPollingIfNeeded();
       } catch (err) {
         console.error('WebMidi could not be enabled:', err);
+        // Retry after a delay (Firefox sometimes needs this)
+        if (mounted) {
+          console.log('[MidiInput] Retrying WebMidi init in 1 second...');
+          setTimeout(init, 1000);
+        }
       }
     }
 
@@ -214,6 +239,8 @@ export function useMidiInput() {
       if (WebMidi.enabled) {
         WebMidi.removeListener('connected', handleConnected);
         WebMidi.removeListener('disconnected', handleDisconnected);
+        // Disable WebMidi on cleanup to ensure fresh state on next init
+        WebMidi.disable();
       }
     };
   }, [setDevices, selectInput]);

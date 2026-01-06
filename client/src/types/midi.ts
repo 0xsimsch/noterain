@@ -158,7 +158,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showFallingNotes: true,
   metronomeEnabled: false,
   scrollSpeed: 1,
-  theme: 'mocha',
+  theme: 'latte',
   noteColorMode: 'track',
 };
 

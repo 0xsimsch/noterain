@@ -49,11 +49,13 @@ interface MidiStore {
   setLiveNote: (note: number, active: boolean) => void;
   clearLiveNotes: () => void;
 
-  // Satisfied notes for wait mode (notes that have been hit at least once)
-  satisfiedWaitNotes: Set<number>;
+  // Satisfied notes for wait mode - tracks which specific note instance was satisfied
+  // Map<noteNumber, startTime of the note that was satisfied>
+  satisfiedWaitNotes: Map<number, number>;
   addSatisfiedWaitNote: (note: number) => void;
+  removeSatisfiedWaitNote: (note: number) => void;
   clearSatisfiedWaitNotes: () => void;
-  pruneStatisfiedWaitNotes: (requiredNotes: number[]) => void;
+  clearExpiredSatisfiedWaitNotes: (activeNotes: MidiNote[]) => void;
 
   // Settings
   settings: Settings;
@@ -290,26 +292,55 @@ export const useMidiStore = create<MidiStore>()(
 
       clearLiveNotes: () => set({ liveNotes: new Set() }),
 
-      // Satisfied wait notes
-      satisfiedWaitNotes: new Set(),
+      // Satisfied wait notes - Map<noteNumber, startTime of satisfied note>
+      satisfiedWaitNotes: new Map(),
 
       addSatisfiedWaitNote: (note) =>
         set((state) => {
-          const newNotes = new Set(state.satisfiedWaitNotes);
-          newNotes.add(note);
+          // Find the current required note for this pitch
+          const file = state.files.find((f) => f.id === state.currentFileId);
+          if (!file) return state;
+
+          const currentTime = state.playback.currentTime;
+          const waitModeNotes = getWaitModeNotes(file, currentTime);
+          const matchingNote = waitModeNotes.find((n) => {
+            if (n.noteNumber !== note) return false;
+            // Skip if this specific note instance is already satisfied
+            const satisfiedStartTime = state.satisfiedWaitNotes.get(n.noteNumber);
+            return satisfiedStartTime !== n.startTime;
+          });
+
+          if (!matchingNote) return state;
+
+          const newNotes = new Map(state.satisfiedWaitNotes);
+          newNotes.set(note, matchingNote.startTime);
           return { satisfiedWaitNotes: newNotes };
         }),
 
-      clearSatisfiedWaitNotes: () => set({ satisfiedWaitNotes: new Set() }),
-
-      // Remove notes from satisfied set that are no longer required
-      pruneStatisfiedWaitNotes: (requiredNotes: number[]) =>
+      removeSatisfiedWaitNote: (note) =>
         set((state) => {
-          const required = new Set(requiredNotes);
-          const pruned = new Set(
-            [...state.satisfiedWaitNotes].filter((note) => required.has(note)),
-          );
-          return { satisfiedWaitNotes: pruned };
+          const newNotes = new Map(state.satisfiedWaitNotes);
+          newNotes.delete(note);
+          return { satisfiedWaitNotes: newNotes };
+        }),
+
+      clearSatisfiedWaitNotes: () => set({ satisfiedWaitNotes: new Map() }),
+
+      // Clear satisfied notes whose note instance has ended
+      clearExpiredSatisfiedWaitNotes: (activeNotes: MidiNote[]) =>
+        set((state) => {
+          const newNotes = new Map(state.satisfiedWaitNotes);
+          // For each satisfied note, check if the note it satisfied has ended
+          for (const [noteNumber, satisfiedStartTime] of state.satisfiedWaitNotes) {
+            // Find if there's still an active note with this pitch and startTime
+            const stillActive = activeNotes.some(
+              (n) => n.noteNumber === noteNumber && n.startTime === satisfiedStartTime
+            );
+            if (!stillActive) {
+              newNotes.delete(noteNumber);
+            }
+          }
+          return { satisfiedWaitNotes: newNotes };
         }),
 
       // Settings
@@ -417,7 +448,7 @@ export function getActiveNotesAtTime(file: MidiFile, time: number): MidiNote[] {
 }
 
 /** Grace period in seconds for early note hits in wait mode */
-export const WAIT_MODE_GRACE_PERIOD = 0.05;
+export const WAIT_MODE_GRACE_PERIOD = 0.4;
 
 /** Get notes that should be considered for wait mode (including upcoming notes within grace period) */
 export function getWaitModeNotes(file: MidiFile, time: number): MidiNote[] {
