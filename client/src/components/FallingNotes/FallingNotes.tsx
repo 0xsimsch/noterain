@@ -1,12 +1,13 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { Application, Graphics, Container, Text, TextStyle } from 'pixi.js';
-import { useMidiStore, getVisibleNotes } from '../../stores/midiStore';
+import { useMidiStore, createSortedNotesIndex, getVisibleNotesFast } from '../../stores/midiStore';
 import {
   PIANO_MIN_NOTE,
   PIANO_MAX_NOTE,
   isBlackKey,
   getPitchColor,
   NOTE_NAMES,
+  MidiTrack,
 } from '../../types/midi';
 
 interface FallingNotesProps {
@@ -14,13 +15,11 @@ interface FallingNotesProps {
   lookahead?: number;
 }
 
-/** Get the X position for a note (0-1 range) */
-function getNoteX(noteNumber: number): { x: number; width: number } {
-  let whiteKeyIndex = 0;
-  for (let n = PIANO_MIN_NOTE; n < noteNumber; n++) {
-    if (!isBlackKey(n)) whiteKeyIndex++;
-  }
+/** Precomputed note X positions (0-1 range) - calculated once at module load */
+const NOTE_POSITIONS: Map<number, { x: number; width: number }> = (() => {
+  const positions = new Map<number, { x: number; width: number }>();
 
+  // Count total white keys once
   let totalWhiteKeys = 0;
   for (let n = PIANO_MIN_NOTE; n <= PIANO_MAX_NOTE; n++) {
     if (!isBlackKey(n)) totalWhiteKeys++;
@@ -29,12 +28,48 @@ function getNoteX(noteNumber: number): { x: number; width: number } {
   const whiteKeyWidth = 1 / totalWhiteKeys;
   const blackKeyWidth = whiteKeyWidth * 0.6;
 
-  if (isBlackKey(noteNumber)) {
-    const x = whiteKeyIndex * whiteKeyWidth - blackKeyWidth / 2;
-    return { x, width: blackKeyWidth };
-  } else {
-    return { x: whiteKeyIndex * whiteKeyWidth, width: whiteKeyWidth };
+  // Precompute all positions
+  let whiteKeyIndex = 0;
+  for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+    if (isBlackKey(note)) {
+      const x = whiteKeyIndex * whiteKeyWidth - blackKeyWidth / 2;
+      positions.set(note, { x, width: blackKeyWidth });
+    } else {
+      positions.set(note, { x: whiteKeyIndex * whiteKeyWidth, width: whiteKeyWidth });
+      whiteKeyIndex++;
+    }
   }
+
+  return positions;
+})();
+
+/** Get the X position for a note (0-1 range) - O(1) lookup */
+function getNoteX(noteNumber: number): { x: number; width: number } {
+  return NOTE_POSITIONS.get(noteNumber) ?? { x: 0, width: 0 };
+}
+
+/** Cached TextStyle objects to avoid recreation */
+const TEXT_STYLE_CACHE: Record<string, { main: TextStyle; accidental: TextStyle }> = {};
+
+function getTextStyles(theme: string): { main: TextStyle; accidental: TextStyle } {
+  if (!TEXT_STYLE_CACHE[theme]) {
+    const textColor = theme === 'latte' ? '#1e1e2e' : '#cdd6f4';
+    TEXT_STYLE_CACHE[theme] = {
+      main: new TextStyle({
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: 12,
+        fontWeight: 'bold',
+        fill: textColor,
+      }),
+      accidental: new TextStyle({
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: 9,
+        fontWeight: 'bold',
+        fill: textColor,
+      }),
+    };
+  }
+  return TEXT_STYLE_CACHE[theme];
 }
 
 /** Draw vertical grid lines for each piano key */
@@ -90,12 +125,50 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
 
   const { settings } = useMidiStore();
   const seek = useMidiStore((state) => state.seek);
+  const currentFileId = useMidiStore((state) => state.currentFileId);
+  const files = useMidiStore((state) => state.files);
+
   // Use getState() to read values inside animation loop without causing re-renders
   const getPlaybackTime = () => useMidiStore.getState().playback.currentTime;
   const getCurrentFile = () => {
     const state = useMidiStore.getState();
     return state.files.find((f) => f.id === state.currentFileId) || null;
   };
+
+  // Memoize current file
+  const currentFile = useMemo(() => {
+    return files.find((f) => f.id === currentFileId) || null;
+  }, [files, currentFileId]);
+
+  // Build sorted notes index once when file/tracks change (for binary search)
+  const sortedNotesRef = useRef<{ notes: ReturnType<typeof createSortedNotesIndex>['notes']; maxDuration: number }>({ notes: [], maxDuration: 0 });
+  const enabledTracksRef = useRef<Set<number>>(new Set());
+  const trackMapRef = useRef<Map<number, MidiTrack>>(new Map());
+
+  // Update indexes when file or track settings change
+  useEffect(() => {
+    if (!currentFile) {
+      sortedNotesRef.current = { notes: [], maxDuration: 0 };
+      enabledTracksRef.current = new Set();
+      trackMapRef.current = new Map();
+      return;
+    }
+
+    // Build sorted notes index with max duration
+    sortedNotesRef.current = createSortedNotesIndex(currentFile);
+
+    // Build enabled tracks set and track map
+    const enabledTracks = new Set<number>();
+    const trackMap = new Map<number, MidiTrack>();
+    for (const track of currentFile.tracks) {
+      trackMap.set(track.index, track);
+      if (track.enabled || track.renderOnly) {
+        enabledTracks.add(track.index);
+      }
+    }
+    enabledTracksRef.current = enabledTracks;
+    trackMapRef.current = trackMap;
+  }, [currentFile]);
 
   // Initialize PixiJS
   useEffect(() => {
@@ -201,14 +274,23 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
     // Read currentTime directly from store to avoid dependency on playback.currentTime
     const currentTime = getPlaybackTime();
 
-    // Get visible notes
-    const visibleNotes = getVisibleNotes(file, currentTime, lookahead);
+    // Get visible notes using binary search (O(log n + k) instead of O(n))
+    const visibleNotes = getVisibleNotesFast(
+      sortedNotesRef.current.notes,
+      sortedNotesRef.current.maxDuration,
+      currentTime,
+      lookahead,
+      enabledTracksRef.current
+    );
 
     // Track which notes are still visible
     const visibleNoteKeys = new Set<string>();
 
     // Pixels per second (how fast notes fall)
     const pixelsPerSecond = canvasHeight / lookahead;
+
+    // Get cached text styles
+    const textStyles = getTextStyles(settings.theme);
 
     for (const note of visibleNotes) {
       const noteKey = `${note.track}-${note.noteNumber}-${note.startTime}`;
@@ -222,16 +304,8 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         const letter = noteName[0]; // Just the letter (C, D, E, etc.)
         const accidental = noteName.length > 1 ? noteName.slice(1) : null; // # or b if present
 
-        // Theme-based text color
-        const textColor = settings.theme === 'latte' ? '#1e1e2e' : '#cdd6f4';
-
-        const textStyle = new TextStyle({
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-          fontSize: 12,
-          fontWeight: 'bold',
-          fill: textColor,
-        });
-        const text = new Text({ text: letter, style: textStyle });
+        // Use cached TextStyle
+        const text = new Text({ text: letter, style: textStyles.main });
         text.anchor.set(0.5, 0);
         notesContainer.addChild(graphics);
         notesContainer.addChild(text);
@@ -239,13 +313,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         // Create accidental text if needed
         let accidentalText: Text | null = null;
         if (accidental) {
-          const accidentalStyle = new TextStyle({
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            fontSize: 9,
-            fontWeight: 'bold',
-            fill: textColor,
-          });
-          accidentalText = new Text({ text: accidental, style: accidentalStyle });
+          accidentalText = new Text({ text: accidental, style: textStyles.accidental });
           accidentalText.anchor.set(0.5, 0);
           notesContainer.addChild(accidentalText);
         }
@@ -267,8 +335,8 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         canvasHeight - (timeUntilNote + note.duration) * pixelsPerSecond;
       const h = note.duration * pixelsPerSecond;
 
-      // Get track info for color and render-only state
-      const track = file.tracks.find((t) => t.index === note.track);
+      // Get track info for color and render-only state (O(1) lookup)
+      const track = trackMapRef.current.get(note.track);
       const isRenderOnly = track ? !track.enabled && track.renderOnly : false;
 
       // Get color based on color mode

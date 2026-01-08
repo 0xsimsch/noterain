@@ -197,6 +197,36 @@ export function usePlayback() {
     }
   }, [playback.isPlaying]);
 
+  // Pause playback when window/tab loses focus or becomes hidden
+  useEffect(() => {
+    const pauseIfPlaying = () => {
+      // Read fresh state to avoid stale closure
+      const isPlaying = useMidiStore.getState().playback.isPlaying;
+      if (isPlaying) {
+        console.log('[Playback] Window lost focus, pausing playback');
+        stopAll();
+        pause();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        pauseIfPlaying();
+      }
+    };
+
+    const handleBlur = () => {
+      pauseIfPlaying();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [pause, stopAll]);
+
   /** Toggle play/pause */
   const togglePlay = useCallback(async () => {
     console.log(

@@ -3,6 +3,9 @@ import { WebMidi, NoteMessageEvent, PortEvent } from 'webmidi';
 import { useMidiStore } from '../stores/midiStore';
 import type { MidiDevice } from '../types/midi';
 
+/** Track if MIDI permission was denied this session (resets on page refresh) */
+let midiPermissionDenied = false;
+
 /** Patterns that indicate virtual/software MIDI devices */
 const VIRTUAL_DEVICE_PATTERNS = [
   /midi through/i,
@@ -49,6 +52,12 @@ export function useMidiInput() {
     let pollInterval: ReturnType<typeof setInterval> | null = null;
 
     async function init() {
+      // Don't request permission again if already denied this session
+      if (midiPermissionDenied) {
+        console.log('[MidiInput] MIDI permission was denied, skipping init until page refresh');
+        return;
+      }
+
       try {
         // Ensure WebMidi is disabled before enabling (Firefox workaround)
         if (WebMidi.enabled) {
@@ -93,7 +102,14 @@ export function useMidiInput() {
         startPollingIfNeeded();
       } catch (err) {
         console.error('WebMidi could not be enabled:', err);
-        // Retry after a delay (Firefox sometimes needs this)
+        // Check if this is a permission denial (NotAllowedError or SecurityError)
+        const errorName = err instanceof Error ? err.name : '';
+        if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+          console.log('[MidiInput] MIDI permission denied by user, will not ask again until page refresh');
+          midiPermissionDenied = true;
+          return;
+        }
+        // Retry after a delay for other errors (Firefox sometimes needs this)
         if (mounted) {
           console.log('[MidiInput] Retrying WebMidi init in 1 second...');
           setTimeout(init, 1000);
@@ -112,6 +128,15 @@ export function useMidiInput() {
 
     async function pollForDevices() {
       if (!mounted) return;
+
+      // Don't poll if permission was denied
+      if (midiPermissionDenied) {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+        return;
+      }
 
       try {
         console.log('[MidiInput] Polling for MIDI devices...');

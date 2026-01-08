@@ -456,6 +456,70 @@ export function getVisibleNotes(
   return notes;
 }
 
+/** Create a sorted index of all notes for efficient lookup, with max duration */
+export function createSortedNotesIndex(file: MidiFile): { notes: MidiNote[]; maxDuration: number } {
+  const notes: MidiNote[] = [];
+  let maxDuration = 0;
+  for (const track of file.tracks) {
+    for (const note of track.notes) {
+      notes.push(note);
+      if (note.duration > maxDuration) {
+        maxDuration = note.duration;
+      }
+    }
+  }
+  // Sort by startTime for binary search
+  notes.sort((a, b) => a.startTime - b.startTime);
+  return { notes, maxDuration };
+}
+
+/** Binary search to find the first note with startTime >= target */
+function binarySearchByStartTime(notes: MidiNote[], targetTime: number): number {
+  let low = 0;
+  let high = notes.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (notes[mid].startTime < targetTime) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+/** Get visible notes using binary search - O(log n + k) where k = notes in time window */
+export function getVisibleNotesFast(
+  sortedNotes: MidiNote[],
+  maxDuration: number,
+  currentTime: number,
+  lookahead: number,
+  enabledTracks: Set<number>,
+): MidiNote[] {
+  if (sortedNotes.length === 0) return [];
+
+  const result: MidiNote[] = [];
+  const windowStart = currentTime - maxDuration; // Notes that started this long ago might still be playing
+  const windowEnd = currentTime + lookahead;
+
+  // Find first note that could possibly be visible (started after windowStart)
+  const startIdx = binarySearchByStartTime(sortedNotes, windowStart);
+
+  // Iterate until notes start after our lookahead window
+  for (let i = startIdx; i < sortedNotes.length; i++) {
+    const note = sortedNotes[i];
+    // Stop when notes start after our window
+    if (note.startTime > windowEnd) break;
+    // Check if note is still visible (hasn't ended yet)
+    const noteEnd = note.startTime + note.duration;
+    if (noteEnd >= currentTime && enabledTracks.has(note.track)) {
+      result.push(note);
+    }
+  }
+
+  return result;
+}
+
 /** Get notes that are currently playing */
 export function getActiveNotesAtTime(file: MidiFile, time: number): MidiNote[] {
   const notes: MidiNote[] = [];
