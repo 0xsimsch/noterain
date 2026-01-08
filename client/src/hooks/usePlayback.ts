@@ -124,8 +124,8 @@ export function usePlayback() {
         // Each note must be satisfied by a keypress that matched its specific startTime
         const satisfiedNotes = useMidiStore.getState().satisfiedWaitNotes;
         const allPlayed = activeNotes.every((note) => {
-          const satisfiedStartTime = satisfiedNotes.get(note.noteNumber);
-          return satisfiedStartTime === note.startTime;
+          const satisfiedStartTimes = satisfiedNotes.get(note.noteNumber);
+          return satisfiedStartTimes?.has(note.startTime) ?? false;
         });
 
         if (!allPlayed) {

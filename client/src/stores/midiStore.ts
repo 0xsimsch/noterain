@@ -49,9 +49,9 @@ interface MidiStore {
   setLiveNote: (note: number, active: boolean) => void;
   clearLiveNotes: () => void;
 
-  // Satisfied notes for wait mode - tracks which specific note instance was satisfied
-  // Map<noteNumber, startTime of the note that was satisfied>
-  satisfiedWaitNotes: Map<number, number>;
+  // Satisfied notes for wait mode - tracks which specific note instances were satisfied
+  // Map<noteNumber, Set<startTime>> to handle same pitch in multiple tracks
+  satisfiedWaitNotes: Map<number, Set<number>>;
   addSatisfiedWaitNote: (note: number) => void;
   removeSatisfiedWaitNote: (note: number) => void;
   clearSatisfiedWaitNotes: () => void;
@@ -292,28 +292,43 @@ export const useMidiStore = create<MidiStore>()(
 
       clearLiveNotes: () => set({ liveNotes: new Set() }),
 
-      // Satisfied wait notes - Map<noteNumber, startTime of satisfied note>
+      // Satisfied wait notes - Map<noteNumber, Set<startTime>> to handle same pitch in multiple tracks
       satisfiedWaitNotes: new Map(),
 
       addSatisfiedWaitNote: (note) =>
         set((state) => {
+          // Don't register keypresses while paused
+          if (!state.playback.isPlaying) return state;
+
           // Find the current required note for this pitch
           const file = state.files.find((f) => f.id === state.currentFileId);
           if (!file) return state;
 
           const currentTime = state.playback.currentTime;
           const waitModeNotes = getWaitModeNotes(file, currentTime);
-          const matchingNote = waitModeNotes.find((n) => {
+          const satisfiedStartTimes = state.satisfiedWaitNotes.get(note) ?? new Set();
+
+          // Find unsatisfied note instances for this pitch
+          const unsatisfiedNotes = waitModeNotes.filter((n) => {
             if (n.noteNumber !== note) return false;
-            // Skip if this specific note instance is already satisfied
-            const satisfiedStartTime = state.satisfiedWaitNotes.get(n.noteNumber);
-            return satisfiedStartTime !== n.startTime;
+            return !satisfiedStartTimes.has(n.startTime);
           });
 
-          if (!matchingNote) return state;
+          if (unsatisfiedNotes.length === 0) return state;
 
+          // Prioritize notes that are currently active (already started) over upcoming ones,
+          // then pick the earliest startTime among those
+          const activeNotes = unsatisfiedNotes.filter((n) => n.startTime <= currentTime);
+          const candidates = activeNotes.length > 0 ? activeNotes : unsatisfiedNotes;
+          const matchingNote = candidates.reduce((earliest, n) =>
+            n.startTime < earliest.startTime ? n : earliest
+          );
+
+          // Add the startTime to the set of satisfied instances for this pitch
           const newNotes = new Map(state.satisfiedWaitNotes);
-          newNotes.set(note, matchingNote.startTime);
+          const newStartTimes = new Set(satisfiedStartTimes);
+          newStartTimes.add(matchingNote.startTime);
+          newNotes.set(note, newStartTimes);
           return { satisfiedWaitNotes: newNotes };
         }),
 
@@ -331,13 +346,21 @@ export const useMidiStore = create<MidiStore>()(
         set((state) => {
           const newNotes = new Map(state.satisfiedWaitNotes);
           // For each satisfied note, check if the note it satisfied has ended
-          for (const [noteNumber, satisfiedStartTime] of state.satisfiedWaitNotes) {
-            // Find if there's still an active note with this pitch and startTime
-            const stillActive = activeNotes.some(
-              (n) => n.noteNumber === noteNumber && n.startTime === satisfiedStartTime
-            );
-            if (!stillActive) {
+          for (const [noteNumber, satisfiedStartTimes] of state.satisfiedWaitNotes) {
+            const newStartTimes = new Set<number>();
+            for (const startTime of satisfiedStartTimes) {
+              // Keep only if there's still an active note with this pitch and startTime
+              const stillActive = activeNotes.some(
+                (n) => n.noteNumber === noteNumber && n.startTime === startTime
+              );
+              if (stillActive) {
+                newStartTimes.add(startTime);
+              }
+            }
+            if (newStartTimes.size === 0) {
               newNotes.delete(noteNumber);
+            } else {
+              newNotes.set(noteNumber, newStartTimes);
             }
           }
           return { satisfiedWaitNotes: newNotes };
