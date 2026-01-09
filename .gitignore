@@ -24,3 +24,6 @@ bun.lock
 
 # SSL certificates
 certs/
+
+# Deployment
+deploy.sh

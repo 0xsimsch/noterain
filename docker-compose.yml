@@ -1,0 +1,9 @@
+services:
+  noterain:
+    build: .
+    ports:
+      - "${PORT:-3001}:3000"
+    environment:
+      - FORCE_HTTP=true
+      - PORT=3000
+    restart: unless-stopped
