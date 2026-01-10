@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { usePlayback } from '../../hooks/usePlayback';
 import { useMidiFile } from '../../hooks/useMidiFile';
 import { useMidiInput } from '../../hooks/useMidiInput';
-import { useMidiStore, getMeasureCount } from '../../stores/midiStore';
+import { useMidiStore, getMeasureCount, getSecondsPerMeasure } from '../../stores/midiStore';
 import styles from './Controls.module.css';
 
 export function Controls() {
@@ -104,6 +104,11 @@ export function Controls() {
 
             <div className={styles.timeDisplay}>
               {formatTime(currentTime)} / {formatTime(currentFile?.duration || 0)}
+              {currentFile && (
+                <span className={styles.measureDisplay}>
+                  M{Math.floor(currentTime / getSecondsPerMeasure(currentFile)) + 1}/{getMeasureCount(currentFile)}
+                </span>
+              )}
             </div>
 
             <input

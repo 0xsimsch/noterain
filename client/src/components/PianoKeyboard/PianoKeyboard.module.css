@@ -6,6 +6,18 @@
   user-select: none;
 }
 
+.keyboard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 100%);
+  pointer-events: none;
+  z-index: 10;
+}
+
 .keysContainer {
   position: relative;
   height: 100%;

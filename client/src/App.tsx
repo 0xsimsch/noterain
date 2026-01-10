@@ -11,7 +11,7 @@ import './App.css';
 function App() {
   const { noteOn, noteOff, resumeAudio } = useAudioEngine();
   const { handleDrop, currentFile } = useMidiFile();
-  const { settings } = useMidiStore();
+  const { settings, setLiveNote, addSatisfiedWaitNote } = useMidiStore();
 
   // Apply theme to document
   useEffect(() => {
@@ -23,15 +23,18 @@ function App() {
     async (noteNumber: number) => {
       await resumeAudio();
       noteOn(noteNumber, 100);
+      setLiveNote(noteNumber, true);
+      addSatisfiedWaitNote(noteNumber);
     },
-    [noteOn, resumeAudio]
+    [noteOn, resumeAudio, setLiveNote, addSatisfiedWaitNote]
   );
 
   const handleNoteOff = useCallback(
     (noteNumber: number) => {
       noteOff(noteNumber);
+      setLiveNote(noteNumber, false);
     },
-    [noteOff]
+    [noteOff, setLiveNote]
   );
 
   // Handle drag over

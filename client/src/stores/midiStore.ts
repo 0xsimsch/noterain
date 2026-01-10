@@ -238,13 +238,23 @@ export const useMidiStore = create<MidiStore>()(
       toggleLoop: () => {
         const state = get();
         const enabling = !state.playback.loopEnabled;
-        // When enabling loop, set default values if not already set (end = start + 1)
-        const loopStartMeasure = enabling && state.playback.loopStartMeasure === null
-          ? 0
-          : state.playback.loopStartMeasure;
-        const loopEndMeasure = enabling && state.playback.loopEndMeasure === null
-          ? 1
-          : state.playback.loopEndMeasure;
+
+        // When enabling loop, default to current measure based on playback position
+        let loopStartMeasure = state.playback.loopStartMeasure;
+        let loopEndMeasure = state.playback.loopEndMeasure;
+
+        if (enabling && loopStartMeasure === null) {
+          const file = state.files.find((f) => f.id === state.currentFileId);
+          if (file) {
+            const currentMeasure = Math.floor(state.playback.currentTime / getSecondsPerMeasure(file));
+            const maxMeasure = getMeasureCount(file) - 1;
+            loopStartMeasure = currentMeasure;
+            loopEndMeasure = Math.min(currentMeasure + 1, maxMeasure);
+          } else {
+            loopStartMeasure = 0;
+            loopEndMeasure = 1;
+          }
+        }
 
         // Calculate seek time if enabling and we have a file
         let seekTime: number | null = null;
@@ -259,8 +269,9 @@ export const useMidiStore = create<MidiStore>()(
           playback: {
             ...state.playback,
             loopEnabled: enabling,
-            loopStartMeasure,
-            loopEndMeasure,
+            // Reset measures to null when disabling so next enable uses current position
+            loopStartMeasure: enabling ? loopStartMeasure : null,
+            loopEndMeasure: enabling ? loopEndMeasure : null,
             ...(seekTime !== null ? { currentTime: seekTime } : {}),
           },
         });
