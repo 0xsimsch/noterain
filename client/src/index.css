@@ -35,8 +35,8 @@
   --text-secondary: #8b95a7;
   --text-muted: var(--od-fg-muted);
   --border-color: var(--od-bg-lighter);
-  --accent: var(--od-blue);
-  --accent-hover: var(--od-cyan);
+  --accent: var(--od-orange);
+  --accent-hover: var(--od-yellow);
   --warning: var(--od-orange);
   --canvas-bg: var(--od-bg-light);
 
@@ -88,8 +88,8 @@
   --text-secondary: var(--ctp-subtext1);
   --text-muted: var(--ctp-overlay1);
   --border-color: var(--ctp-surface1);
-  --accent: var(--ctp-blue);
-  --accent-hover: var(--ctp-sapphire);
+  --accent: #d19a66;
+  --accent-hover: #e5c07b;
   --warning: var(--ctp-peach);
   --canvas-bg: var(--ctp-mantle);
 }

@@ -149,6 +149,35 @@ export function Controls() {
       {/* Expanded grid content */}
       {isExpanded && (
         <div className={styles.grid}>
+          {/* Render mode toggle */}
+          <div className={styles.gridItem}>
+            <label className={styles.label}>View:</label>
+            <button
+              className={`${styles.button} ${!settings.showSheetMusic ? styles.active : ''}`}
+              onClick={() => updateSettings({ showSheetMusic: false })}
+            >
+              Falling Notes
+            </button>
+            <button
+              className={`${styles.button} ${settings.showSheetMusic ? styles.active : ''}`}
+              onClick={() => updateSettings({ showSheetMusic: true })}
+            >
+              Sheet Music
+            </button>
+          </div>
+
+          {/* Wait mode toggle */}
+          <div className={styles.gridItem}>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={waitMode}
+                onChange={toggleWaitMode}
+              />
+              Wait for input
+            </label>
+          </div>
+
           {/* Speed control */}
           <div className={styles.gridItem}>
             <label className={styles.label}>Speed:</label>
@@ -169,22 +198,10 @@ export function Controls() {
             <span className={styles.label}>%</span>
           </div>
 
-          {/* Wait mode toggle */}
-          <div className={styles.gridItem}>
-            <label className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={waitMode}
-                onChange={toggleWaitMode}
-              />
-              Wait for input
-            </label>
-          </div>
-
           {/* Loop controls */}
           {currentFile && (
             <div className={styles.gridItem}>
-              <label className={styles.label}>Loop measures:</label>
+              <label className={styles.label}>Loop:</label>
               <button
                 className={`${styles.button} ${loopEnabled ? styles.active : ''}`}
                 onClick={toggleLoop}
@@ -235,23 +252,6 @@ export function Controls() {
               )}
             </div>
           )}
-
-          {/* Render mode toggle */}
-          <div className={styles.gridItem}>
-            <label className={styles.label}>View:</label>
-            <button
-              className={`${styles.button} ${!settings.showSheetMusic ? styles.active : ''}`}
-              onClick={() => updateSettings({ showSheetMusic: false })}
-            >
-              Falling Notes
-            </button>
-            <button
-              className={`${styles.button} ${settings.showSheetMusic ? styles.active : ''}`}
-              onClick={() => updateSettings({ showSheetMusic: true })}
-            >
-              Sheet Music
-            </button>
-          </div>
 
           {/* Note color mode toggle (only for falling notes view) */}
           {!settings.showSheetMusic && (

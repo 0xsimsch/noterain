@@ -61,7 +61,7 @@ A modern web-based MIDI player and piano learning tool with falling notes visual
 - Live note visualization on keyboard and falling notes
 
 ### Audio
-- High-quality Salamander Grand Piano samples
+- High-quality piano samples (VSCO Community Edition)
 - Velocity-sensitive playback
 - Master volume control
 - Polyphonic playback
@@ -117,7 +117,7 @@ bun run start:prod
 
 - **Frontend**: React 19, TypeScript, Vite
 - **Visualization**: PixiJS (falling notes), VexFlow (sheet music)
-- **Audio**: Tone.js with Salamander Grand Piano samples
+- **Audio**: Tone.js with VSCO piano samples
 - **MIDI**: WebMIDI API, midi-file parser
 - **State**: Zustand with localStorage persistence
 - **Backend**: NestJS (serves static files and API)
@@ -141,6 +141,13 @@ piano/
 ├── src/                    # NestJS backend
 └── dist/                   # Production build output
 ```
+
+## Attributions
+
+### Piano Samples
+Piano samples from [VSCO Community Edition](https://versilian-studios.com/vsco-community/) by Versilian Studios - [CC0 (Public Domain)](https://creativecommons.org/publicdomain/zero/1.0/)
+
+Samples are served via [tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments).
 
 ## License
 
