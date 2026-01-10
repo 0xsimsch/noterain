@@ -4,6 +4,12 @@
 
 A modern web-based MIDI player and piano learning tool with falling notes visualization, sheet music rendering, and MIDI keyboard support.
 
+## Screenshots
+
+![Falling Notes](images/fallingnotes.png)
+
+![Sheet Music](images/notesheet.png)
+
 ## Features
 
 ### Playback Controls
