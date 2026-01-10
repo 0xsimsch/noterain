@@ -1,26 +1,70 @@
 .controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 12px 16px;
+  flex-direction: column;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: relative;
+  z-index: 10;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  padding: 4px 8px;
+  gap: 8px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-base);
+}
+
+.gridItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--bg-surface);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.gridItemWide {
+  grid-column: 1 / -1;
 }
 
 .section {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .button {
-  padding: 8px 16px;
+  padding: 5px 10px;
   background: var(--bg-elevated);
   border: none;
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   transition: background-color 0.15s;
 }
@@ -40,24 +84,24 @@
 }
 
 .playButton {
-  width: 40px;
-  padding: 8px;
-  font-size: 16px;
+  width: 32px;
+  padding: 5px;
+  font-size: 14px;
 }
 
-.themeButton {
-  padding: 8px 12px;
-  font-size: 16px;
+.iconButton {
+  padding: 5px 8px;
+  font-size: 14px;
 }
 
 .select {
-  padding: 8px 12px;
+  padding: 5px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 14px;
-  min-width: 150px;
+  font-size: 13px;
+  min-width: 120px;
 }
 
 .select:focus {
@@ -66,7 +110,7 @@
 }
 
 .label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -82,17 +126,17 @@
 }
 
 .timeDisplay {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   font-family: monospace;
-  min-width: 90px;
+  min-width: 80px;
 }
 
 .checkboxLabel {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 4px;
+  font-size: 12px;
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -177,13 +221,13 @@
 }
 
 .measureInput {
-  width: 50px;
-  padding: 6px 8px;
+  width: 45px;
+  padding: 4px 6px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -193,6 +237,22 @@
 }
 
 .loopSeparator {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
+}
+
+.speedInput {
+  width: 60px;
+  padding: 4px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.speedInput:focus {
+  outline: none;
+  border-color: var(--accent);
 }
