@@ -353,9 +353,58 @@
   }
 }
 
-@media (max-width: 900px) {
+/* Small screens in landscape - keep single row with shorter progress bar */
+@media (max-width: 900px) and (orientation: landscape) {
+  .progressBar {
+    max-width: 150px;
+    min-width: 60px;
+  }
+
+  .volumeSlider {
+    width: 50px;
+  }
+}
+
+@media (max-width: 700px) and (orientation: landscape) {
+  .progressBar {
+    max-width: 80px;
+    min-width: 40px;
+  }
+
+  .timeDisplay {
+    min-width: auto;
+  }
+
+  .measureDisplay {
+    display: none;
+  }
+
+  .volumeSlider {
+    display: none;
+  }
+}
+
+/* Small screens in portrait - allow 2 rows */
+@media (max-width: 900px) and (orientation: portrait) {
   .header {
     flex-wrap: wrap;
+  }
+
+  .logo {
+    display: none;
+  }
+
+  .headerLeft {
+    flex: 1;
+  }
+
+  .headerRight {
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .volumeControl {
+    margin-right: auto;
   }
 
   .headerCenter {
