@@ -1,6 +1,10 @@
-# NoteRain
+<p align="center">
+  <img src="assets/logo_title.png" alt="NoteRain" width="400" />
+</p>
 
-**[noterain.app](https://noterain.app)**
+<p align="center">
+  <strong><a href="https://noterain.app">noterain.app</a></strong>
+</p>
 
 A modern web-based MIDI player and piano learning tool with falling notes visualization, sheet music rendering, and MIDI keyboard support.
 
