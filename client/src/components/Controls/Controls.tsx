@@ -44,7 +44,7 @@ export function Controls() {
     clearLoop,
   } = usePlayback();
 
-  const { files, currentFile, currentFileId, setCurrentFile, handleFileInput, exportFile } =
+  const { files, currentFile, currentFileId, setCurrentFile, handleFileInput } =
     useMidiFile();
 
   const { inputs, selectedInput, selectInput, isEnabled } = useMidiInput();
@@ -226,6 +226,18 @@ export function Controls() {
                 onChange={toggleWaitMode}
               />
               Wait for input
+            </label>
+          </div>
+
+          {/* Fit keyboard to song toggle */}
+          <div className={styles.gridItem}>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={settings.fitKeyboardToSong}
+                onChange={() => updateSettings({ fitKeyboardToSong: !settings.fitKeyboardToSong })}
+              />
+              Fit keyboard to song
             </label>
           </div>
 

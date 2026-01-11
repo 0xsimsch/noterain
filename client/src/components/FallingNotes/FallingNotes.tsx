@@ -13,24 +13,31 @@ import {
 interface FallingNotesProps {
   /** How many seconds of notes to show ahead */
   lookahead?: number;
+  /** Minimum note to render (default: PIANO_MIN_NOTE) */
+  minNote?: number;
+  /** Maximum note to render (default: PIANO_MAX_NOTE) */
+  maxNote?: number;
 }
 
-/** Precomputed note X positions (0-1 range) - calculated once at module load */
-const NOTE_POSITIONS: Map<number, { x: number; width: number }> = (() => {
+/** Compute note X positions (0-1 range) for a given note range */
+function computeNotePositions(
+  minNote: number,
+  maxNote: number
+): Map<number, { x: number; width: number }> {
   const positions = new Map<number, { x: number; width: number }>();
 
-  // Count total white keys once
+  // Count total white keys in range
   let totalWhiteKeys = 0;
-  for (let n = PIANO_MIN_NOTE; n <= PIANO_MAX_NOTE; n++) {
+  for (let n = minNote; n <= maxNote; n++) {
     if (!isBlackKey(n)) totalWhiteKeys++;
   }
 
   const whiteKeyWidth = 1 / totalWhiteKeys;
   const blackKeyWidth = whiteKeyWidth * 0.6;
 
-  // Precompute all positions
+  // Compute all positions
   let whiteKeyIndex = 0;
-  for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+  for (let note = minNote; note <= maxNote; note++) {
     if (isBlackKey(note)) {
       const x = whiteKeyIndex * whiteKeyWidth - blackKeyWidth / 2;
       positions.set(note, { x, width: blackKeyWidth });
@@ -41,11 +48,6 @@ const NOTE_POSITIONS: Map<number, { x: number; width: number }> = (() => {
   }
 
   return positions;
-})();
-
-/** Get the X position for a note (0-1 range) - O(1) lookup */
-function getNoteX(noteNumber: number): { x: number; width: number } {
-  return NOTE_POSITIONS.get(noteNumber) ?? { x: 0, width: 0 };
 }
 
 /** Cached TextStyle objects to avoid recreation */
@@ -73,7 +75,14 @@ function getTextStyles(theme: string): { main: TextStyle; accidental: TextStyle 
 }
 
 /** Draw vertical grid lines for each piano key */
-function drawGrid(app: Application, graphics: Graphics, theme: string) {
+function drawGrid(
+  app: Application,
+  graphics: Graphics,
+  theme: string,
+  minNote: number,
+  maxNote: number,
+  notePositions: Map<number, { x: number; width: number }>
+) {
   const { width, height } = app.screen;
   if (width === 0 || height === 0) return;
 
@@ -84,25 +93,27 @@ function drawGrid(app: Application, graphics: Graphics, theme: string) {
   const blackKeyBg = isLight ? 0xebe7e0 : 0x1e1b18;
 
   // Draw background shading for black key lanes
-  for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+  for (let note = minNote; note <= maxNote; note++) {
     if (isBlackKey(note)) {
-      const { x, width: noteWidth } = getNoteX(note);
-      graphics
-        .rect(x * width, 0, noteWidth * width, height)
-        .fill({ color: blackKeyBg, alpha: 0.5 });
+      const pos = notePositions.get(note);
+      if (pos) {
+        graphics
+          .rect(pos.x * width, 0, pos.width * width, height)
+          .fill({ color: blackKeyBg, alpha: 0.5 });
+      }
     }
   }
 
   // Draw vertical lines at white key boundaries
   let whiteKeyIndex = 0;
   let totalWhiteKeys = 0;
-  for (let n = PIANO_MIN_NOTE; n <= PIANO_MAX_NOTE; n++) {
+  for (let n = minNote; n <= maxNote; n++) {
     if (!isBlackKey(n)) totalWhiteKeys++;
   }
 
   const whiteKeyWidth = width / totalWhiteKeys;
 
-  for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+  for (let note = minNote; note <= maxNote; note++) {
     if (!isBlackKey(note)) {
       const x = whiteKeyIndex * whiteKeyWidth;
       graphics
@@ -114,7 +125,11 @@ function drawGrid(app: Application, graphics: Graphics, theme: string) {
   }
 }
 
-export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
+export function FallingNotes({
+  lookahead = 3,
+  minNote = PIANO_MIN_NOTE,
+  maxNote = PIANO_MAX_NOTE,
+}: FallingNotesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const notesContainerRef = useRef<Container | null>(null);
@@ -124,6 +139,21 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
   const [isReady, setIsReady] = useState(false);
 
   const { settings } = useMidiStore();
+
+  // Memoize note positions based on range
+  const notePositions = useMemo(
+    () => computeNotePositions(minNote, maxNote),
+    [minNote, maxNote]
+  );
+
+  // Store current values in refs for access inside effects
+  const minNoteRef = useRef(minNote);
+  const maxNoteRef = useRef(maxNote);
+  const notePositionsRef = useRef(notePositions);
+  minNoteRef.current = minNote;
+  maxNoteRef.current = maxNote;
+  notePositionsRef.current = notePositions;
+
   const seek = useMidiStore((state) => state.seek);
   const currentFileId = useMidiStore((state) => state.currentFileId);
   const files = useMidiStore((state) => state.files);
@@ -220,7 +250,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         notesContainerRef.current = notesContainer;
 
         // Draw initial grid
-        drawGrid(app, gridGraphics, theme);
+        drawGrid(app, gridGraphics, theme, minNoteRef.current, maxNoteRef.current, notePositionsRef.current);
 
         setIsReady(true);
       } catch (err) {
@@ -325,9 +355,11 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
       const { graphics, text, accidentalText } = noteObj;
 
       // Calculate position
-      const { x: noteX, width: noteWidth } = getNoteX(note.noteNumber);
-      const x = noteX * width;
-      const w = noteWidth * width - 2; // Small gap between notes
+      const pos = notePositionsRef.current.get(note.noteNumber);
+      // Skip notes outside the visible range
+      if (!pos) continue;
+      const x = pos.x * width;
+      const w = pos.width * width - 2; // Small gap between notes
 
       // Y position: notes fall from top (future) to bottom (current time)
       const timeUntilNote = note.startTime - currentTime;
@@ -454,7 +486,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
         // Redraw grid after resize
         if (gridGraphics) {
           const theme = useMidiStore.getState().settings.theme;
-          drawGrid(app, gridGraphics, theme);
+          drawGrid(app, gridGraphics, theme, minNoteRef.current, maxNoteRef.current, notePositionsRef.current);
         }
       }
     };
@@ -475,7 +507,7 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
 
     // Redraw grid with new theme colors
     if (gridGraphics) {
-      drawGrid(app, gridGraphics, settings.theme);
+      drawGrid(app, gridGraphics, settings.theme, minNoteRef.current, maxNoteRef.current, notePositionsRef.current);
     }
 
     // Clear cached notes so they get recreated with new theme colors
@@ -493,6 +525,35 @@ export function FallingNotes({ lookahead = 3 }: FallingNotesProps) {
       noteGraphicsRef.current.clear();
     }
   }, [settings.theme, isReady]);
+
+  // Redraw grid and clear notes when note range changes
+  useEffect(() => {
+    const app = appRef.current;
+    const gridGraphics = gridGraphicsRef.current;
+    const notesContainer = notesContainerRef.current;
+    if (!app || !isReady) return;
+
+    // Redraw grid with new range
+    if (gridGraphics) {
+      const theme = useMidiStore.getState().settings.theme;
+      drawGrid(app, gridGraphics, theme, minNote, maxNote, notePositions);
+    }
+
+    // Clear cached notes so they get recreated with new positions
+    if (notesContainer) {
+      for (const noteObj of noteGraphicsRef.current.values()) {
+        notesContainer.removeChild(noteObj.graphics);
+        notesContainer.removeChild(noteObj.text);
+        if (noteObj.accidentalText) {
+          notesContainer.removeChild(noteObj.accidentalText);
+          noteObj.accidentalText.destroy();
+        }
+        noteObj.graphics.destroy();
+        noteObj.text.destroy();
+      }
+      noteGraphicsRef.current.clear();
+    }
+  }, [minNote, maxNote, notePositions, isReady]);
 
   // Wheel-to-seek: scroll wheel changes playback position
   const handleWheel = useCallback(

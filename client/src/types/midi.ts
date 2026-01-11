@@ -146,6 +146,8 @@ export interface Settings {
   theme: Theme;
   /** How to color notes */
   noteColorMode: NoteColorMode;
+  /** Fit keyboard to only show notes in the song */
+  fitKeyboardToSong: boolean;
 }
 
 /** Default settings */
@@ -160,6 +162,7 @@ export const DEFAULT_SETTINGS: Settings = {
   scrollSpeed: 1,
   theme: 'latte',
   noteColorMode: 'track',
+  fitKeyboardToSong: false,
 };
 
 /** Colors for each pitch class (C, C#, D, ... B) - distinct rainbow spectrum */

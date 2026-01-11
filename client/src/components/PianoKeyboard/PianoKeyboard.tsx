@@ -15,21 +15,27 @@ interface PianoKeyboardProps {
   onNoteOn?: (noteNumber: number) => void;
   /** Callback when a key is released */
   onNoteOff?: (noteNumber: number) => void;
-  /** Height of the keyboard in pixels */
-  height?: number;
+  /** Minimum note to render (default: PIANO_MIN_NOTE) */
+  minNote?: number;
+  /** Maximum note to render (default: PIANO_MAX_NOTE) */
+  maxNote?: number;
 }
 
 /** Get the position of a key (0-1 range relative to keyboard width) */
-function getKeyPosition(noteNumber: number): { left: number; width: number } {
-  // Count white keys from start
+function getKeyPosition(
+  noteNumber: number,
+  minNote: number,
+  maxNote: number
+): { left: number; width: number } {
+  // Count white keys from start of range
   let whiteKeyIndex = 0;
-  for (let n = PIANO_MIN_NOTE; n < noteNumber; n++) {
+  for (let n = minNote; n < noteNumber; n++) {
     if (!isBlackKey(n)) whiteKeyIndex++;
   }
 
-  // Total white keys
+  // Total white keys in range
   let totalWhiteKeys = 0;
-  for (let n = PIANO_MIN_NOTE; n <= PIANO_MAX_NOTE; n++) {
+  for (let n = minNote; n <= maxNote; n++) {
     if (!isBlackKey(n)) totalWhiteKeys++;
   }
 
@@ -50,7 +56,8 @@ export function PianoKeyboard({
   activeNotes: propActiveNotes,
   onNoteOn,
   onNoteOff,
-  height = 120,
+  minNote = PIANO_MIN_NOTE,
+  maxNote = PIANO_MAX_NOTE,
 }: PianoKeyboardProps) {
   const { playback, liveNotes, settings } = useMidiStore();
 
@@ -78,11 +85,11 @@ export function PianoKeyboard({
       position: { left: number; width: number };
     }> = [];
 
-    for (let note = PIANO_MIN_NOTE; note <= PIANO_MAX_NOTE; note++) {
+    for (let note = minNote; note <= maxNote; note++) {
       const key = {
         noteNumber: note,
         noteName: getNoteNameFromNumber(note),
-        position: getKeyPosition(note),
+        position: getKeyPosition(note, minNote, maxNote),
       };
 
       if (isBlackKey(note)) {
@@ -93,7 +100,7 @@ export function PianoKeyboard({
     }
 
     return { whiteKeys, blackKeys };
-  }, []);
+  }, [minNote, maxNote]);
 
   // Handle mouse/touch events
   const handleMouseDown = (noteNumber: number) => {
@@ -149,7 +156,7 @@ export function PianoKeyboard({
   };
 
   return (
-    <div className={styles.keyboard} style={{ height }}>
+    <div className={styles.keyboard}>
       <div className={styles.keysContainer}>
         {/* White keys first (lower z-index) */}
         {keys.whiteKeys.map((key) => renderKey(key, false))}

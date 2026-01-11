@@ -1,17 +1,24 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Controls } from './components/Controls/Controls';
 import { FallingNotes } from './components/FallingNotes/FallingNotes';
 import { SheetMusic } from './components/SheetMusic/SheetMusic';
 import { PianoKeyboard } from './components/PianoKeyboard/PianoKeyboard';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useMidiFile } from './hooks/useMidiFile';
-import { useMidiStore } from './stores/midiStore';
+import { useMidiStore, calculateNoteRange } from './stores/midiStore';
 import './App.css';
 
 function App() {
   const { noteOn, noteOff, resumeAudio } = useAudioEngine();
   const { handleDrop, currentFile } = useMidiFile();
   const { settings, setLiveNote, addSatisfiedWaitNote } = useMidiStore();
+
+  // Calculate dynamic note range based on enabled tracks (only when fitKeyboardToSong is enabled)
+  const { minNote, maxNote } = useMemo(
+    () => settings.fitKeyboardToSong ? calculateNoteRange(currentFile, 2) : calculateNoteRange(null, 2),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentFile, currentFile?.tracks, settings.fitKeyboardToSong]
+  );
 
   // Apply theme to document
   useEffect(() => {
@@ -57,7 +64,7 @@ function App() {
         )}
 
         {currentFile && settings.showFallingNotes && !settings.showSheetMusic && (
-          <FallingNotes lookahead={3} />
+          <FallingNotes lookahead={3} minNote={minNote} maxNote={maxNote} />
         )}
 
         {!currentFile && (
@@ -68,9 +75,10 @@ function App() {
       </div>
 
       <PianoKeyboard
-        height={120}
         onNoteOn={handleNoteOn}
         onNoteOff={handleNoteOff}
+        minNote={minNote}
+        maxNote={maxNote}
       />
     </div>
   );

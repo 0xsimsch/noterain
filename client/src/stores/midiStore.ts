@@ -7,7 +7,7 @@ import type {
   Settings,
   MidiNote,
 } from '../types/midi';
-import { DEFAULT_SETTINGS } from '../types/midi';
+import { DEFAULT_SETTINGS, PIANO_MIN_NOTE, PIANO_MAX_NOTE } from '../types/midi';
 
 interface MidiStore {
   // MIDI Files
@@ -630,4 +630,39 @@ export function getMeasureTime(file: MidiFile, measureIndex: number): number {
 /** Get total number of measures in a file */
 export function getMeasureCount(file: MidiFile): number {
   return Math.ceil(file.duration / getSecondsPerMeasure(file));
+}
+
+/** Calculate the min/max note range from enabled tracks with optional padding */
+export function calculateNoteRange(
+  file: MidiFile | null,
+  padding: number = 2
+): { minNote: number; maxNote: number } {
+  // Default to full 88-key range when no file
+  if (!file) {
+    return { minNote: PIANO_MIN_NOTE, maxNote: PIANO_MAX_NOTE };
+  }
+
+  let minNote = Infinity;
+  let maxNote = -Infinity;
+
+  for (const track of file.tracks) {
+    // Only consider enabled tracks
+    if (!track.enabled) continue;
+
+    for (const note of track.notes) {
+      if (note.noteNumber < minNote) minNote = note.noteNumber;
+      if (note.noteNumber > maxNote) maxNote = note.noteNumber;
+    }
+  }
+
+  // If no notes found in enabled tracks, return full range
+  if (minNote === Infinity || maxNote === -Infinity) {
+    return { minNote: PIANO_MIN_NOTE, maxNote: PIANO_MAX_NOTE };
+  }
+
+  // Apply padding, clamped to piano range
+  return {
+    minNote: Math.max(PIANO_MIN_NOTE, minNote - padding),
+    maxNote: Math.min(PIANO_MAX_NOTE, maxNote + padding),
+  };
 }
