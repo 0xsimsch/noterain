@@ -10,6 +10,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "lucide-react": "^0.562.0",
     "midi-file": "^1.2.4",
     "pixi.js": "^8.14.3",
     "react": "^19.0.0",

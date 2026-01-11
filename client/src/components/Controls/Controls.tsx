@@ -1,4 +1,19 @@
 import { useRef, useState } from 'react';
+import {
+  Play,
+  Pause,
+  Square,
+  Volume2,
+  VolumeX,
+  Sun,
+  Moon,
+  ChevronUp,
+  ChevronDown,
+  Repeat,
+  X,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { usePlayback } from '../../hooks/usePlayback';
 import { useMidiFile } from '../../hooks/useMidiFile';
 import { useMidiInput } from '../../hooks/useMidiInput';
@@ -8,6 +23,7 @@ import styles from './Controls.module.css';
 export function Controls() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [tracksDropdownOpen, setTracksDropdownOpen] = useState(false);
 
   const {
     isPlaying,
@@ -87,11 +103,13 @@ export function Controls() {
               </select>
             )}
 
+{/* Export button hidden for now
             {currentFile && (
               <button className={styles.button} onClick={() => exportFile()}>
                 Export
               </button>
             )}
+*/}
           </div>
         </div>
 
@@ -102,16 +120,7 @@ export function Controls() {
             onClick={togglePlay}
             disabled={!currentFile}
           >
-            {isPlaying ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" />
-                <rect x="14" y="4" width="4" height="16" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
+            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
           </button>
 
           <button
@@ -119,9 +128,7 @@ export function Controls() {
             onClick={stop}
             disabled={!currentFile}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" />
-            </svg>
+            <Square size={16} />
           </button>
 
           <div className={styles.timeDisplay}>
@@ -148,19 +155,11 @@ export function Controls() {
           {/* Volume control */}
           <div className={styles.volumeControl}>
             <button
-              className={`${styles.button} ${styles.iconButton}`}
+              className={`${styles.button} ${styles.iconButton} ${!settings.audioEnabled ? styles.mutedIcon : ''}`}
               onClick={() => updateSettings({ audioEnabled: !settings.audioEnabled })}
               title={settings.audioEnabled ? 'Mute audio' : 'Enable audio'}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M3 9v6h4l5 5V4L7 9H3z"/>
-                {settings.audioEnabled && (
-                  <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                )}
-                {!settings.audioEnabled && (
-                  <path d="M16.5 12l4-4m0 8l-4-4" stroke="currentColor" strokeWidth="2" fill="none"/>
-                )}
-              </svg>
+              {settings.audioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </button>
             {settings.audioEnabled && (
               <input
@@ -185,7 +184,7 @@ export function Controls() {
             }
             title={`Switch to ${settings.theme === 'mocha' ? 'light' : 'dark'} theme`}
           >
-            {settings.theme === 'mocha' ? '☀️' : '🌙'}
+            {settings.theme === 'mocha' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
           {/* Toggle expand button */}
@@ -194,7 +193,7 @@ export function Controls() {
             onClick={() => setIsExpanded(!isExpanded)}
             title={isExpanded ? 'Hide controls' : 'Show controls'}
           >
-            {isExpanded ? '▲' : '▼'}
+            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>
       </div>
@@ -204,15 +203,14 @@ export function Controls() {
         <div className={styles.grid}>
           {/* Render mode toggle */}
           <div className={styles.gridItem}>
-            <label className={styles.label}>View:</label>
             <button
-              className={`${styles.button} ${!settings.showSheetMusic ? styles.active : ''}`}
+              className={`${styles.button} ${styles.viewButton} ${!settings.showSheetMusic ? styles.active : ''}`}
               onClick={() => updateSettings({ showSheetMusic: false })}
             >
               Falling Notes
             </button>
             <button
-              className={`${styles.button} ${settings.showSheetMusic ? styles.active : ''}`}
+              className={`${styles.button} ${styles.viewButton} ${settings.showSheetMusic ? styles.active : ''}`}
               onClick={() => updateSettings({ showSheetMusic: true })}
             >
               Sheet Music
@@ -260,7 +258,7 @@ export function Controls() {
                 onClick={toggleLoop}
                 title="Toggle loop"
               >
-                🔁
+                <Repeat size={16} />
               </button>
               {loopEnabled && (
                 <>
@@ -299,7 +297,7 @@ export function Controls() {
                     onClick={clearLoop}
                     title="Clear loop"
                   >
-                    ✕
+                    <X size={14} />
                   </button>
                 </>
               )}
@@ -350,8 +348,8 @@ export function Controls() {
             )}
           </div>
 
-          {/* Track list */}
-          {currentFile && currentFile.tracks.length > 0 && currentFile.tracks.map((track) => (
+          {/* Track list - inline for 2 or fewer, dropdown for more */}
+          {currentFile && currentFile.tracks.length > 0 && currentFile.tracks.length <= 2 && currentFile.tracks.map((track) => (
             <div
               key={track.index}
               className={styles.gridItem}
@@ -373,7 +371,7 @@ export function Controls() {
                 title={track.renderOnly ? 'Hide track' : 'Show track visually'}
                 disabled={track.enabled}
               >
-                👁
+                {(track.renderOnly || track.enabled) ? <Eye size={14} /> : <EyeOff size={14} />}
               </button>
               <button
                 className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
@@ -382,14 +380,61 @@ export function Controls() {
                 }
                 title={track.playAudio ? 'Mute track' : 'Play track audio'}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3 9v6h4l5 5V4L7 9H3z"/>
-                  {track.playAudio && <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>}
-                  {!track.playAudio && <path d="M19 12l-4-4m0 8l4-4" stroke="currentColor" strokeWidth="2" fill="none"/>}
-                </svg>
+                {track.playAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
               </button>
             </div>
           ))}
+
+          {/* Tracks dropdown for more than 2 tracks */}
+          {currentFile && currentFile.tracks.length > 2 && (
+            <div className={`${styles.gridItem} ${styles.tracksContainer}`}>
+              <button
+                className={`${styles.button} ${tracksDropdownOpen ? styles.active : ''}`}
+                onClick={() => setTracksDropdownOpen(!tracksDropdownOpen)}
+              >
+                Tracks ({currentFile.tracks.length}) {tracksDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {tracksDropdownOpen && (
+                <div className={styles.tracksDropdown}>
+                  {currentFile.tracks.map((track) => (
+                    <div
+                      key={track.index}
+                      className={styles.trackItem}
+                      style={{ borderLeftColor: track.color, borderLeftWidth: 3, borderLeftStyle: 'solid' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={track.enabled}
+                        onChange={() =>
+                          useMidiStore.getState().toggleTrack(currentFile.id, track.index)
+                        }
+                      />
+                      <span className={styles.trackName}>{track.name}</span>
+                      <button
+                        className={`${styles.trackButton} ${(track.renderOnly || track.enabled) ? styles.active : styles.crossed}`}
+                        onClick={() =>
+                          useMidiStore.getState().toggleTrackRenderOnly(currentFile.id, track.index)
+                        }
+                        title={track.renderOnly ? 'Hide track' : 'Show track visually'}
+                        disabled={track.enabled}
+                      >
+                        {(track.renderOnly || track.enabled) ? <Eye size={14} /> : <EyeOff size={14} />}
+                      </button>
+                      <button
+                        className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
+                        onClick={() =>
+                          useMidiStore.getState().toggleTrackPlayAudio(currentFile.id, track.index)
+                        }
+                        title={track.playAudio ? 'Mute track' : 'Play track audio'}
+                      >
+                        {track.playAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

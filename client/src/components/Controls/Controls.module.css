@@ -66,6 +66,7 @@
 .gridItem {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   padding: 4px 6px;
   background: var(--bg-surface);
@@ -119,6 +120,14 @@
 .iconButton {
   padding: 5px 8px;
   font-size: 14px;
+}
+
+.mutedIcon {
+  color: var(--accent);
+}
+
+.viewButton {
+  white-space: nowrap;
 }
 
 .select {
@@ -195,6 +204,46 @@
 
 .trackName {
   cursor: pointer;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.tracksContainer {
+  position: relative;
+}
+
+.tracksDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 250px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.trackItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.trackItem:last-child {
+  border-bottom: none;
+}
+
+.trackItem:hover {
+  background: var(--bg-elevated);
 }
 
 .trackButton {
@@ -274,6 +323,36 @@
 }
 
 /* Responsive adjustments */
+@media (min-width: 2200px) {
+  .grid {
+    grid-template-columns: repeat(10, 1fr);
+  }
+}
+
+@media (min-width: 1900px) and (max-width: 2199px) {
+  .grid {
+    grid-template-columns: repeat(8, 1fr);
+  }
+}
+
+@media (min-width: 1600px) and (max-width: 1899px) {
+  .grid {
+    grid-template-columns: repeat(7, 1fr);
+  }
+}
+
+@media (min-width: 1400px) and (max-width: 1599px) {
+  .grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+@media (min-width: 1100px) and (max-width: 1399px) {
+  .grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
   .header {
     flex-wrap: wrap;
@@ -300,5 +379,11 @@
 @media (max-width: 500px) {
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .tracksDropdown {
+    min-width: 100%;
+    max-height: 50vh;
+    -webkit-overflow-scrolling: touch;
   }
 }
