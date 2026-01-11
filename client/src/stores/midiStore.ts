@@ -55,7 +55,7 @@ interface MidiStore {
   addSatisfiedWaitNote: (note: number) => void;
   removeSatisfiedWaitNote: (note: number) => void;
   clearSatisfiedWaitNotes: () => void;
-  clearExpiredSatisfiedWaitNotes: (activeNotes: MidiNote[]) => void;
+  clearExpiredSatisfiedWaitNotes: (file: MidiFile, currentTime: number) => void;
 
   // Settings
   settings: Settings;
@@ -352,19 +352,20 @@ export const useMidiStore = create<MidiStore>()(
 
       clearSatisfiedWaitNotes: () => set({ satisfiedWaitNotes: new Map() }),
 
-      // Clear satisfied notes whose note instance has ended
-      clearExpiredSatisfiedWaitNotes: (activeNotes: MidiNote[]) =>
+      // Clear satisfied notes whose note instance has ended (past the grace period window)
+      clearExpiredSatisfiedWaitNotes: (file: MidiFile, currentTime: number) =>
         set((state) => {
+          const waitModeNotes = getWaitModeNotes(file, currentTime);
           const newNotes = new Map(state.satisfiedWaitNotes);
           // For each satisfied note, check if the note it satisfied has ended
           for (const [noteNumber, satisfiedStartTimes] of state.satisfiedWaitNotes) {
             const newStartTimes = new Set<number>();
             for (const startTime of satisfiedStartTimes) {
-              // Keep only if there's still an active note with this pitch and startTime
-              const stillActive = activeNotes.some(
+              // Keep if the note is still in the wait mode window (active or within grace period)
+              const stillRelevant = waitModeNotes.some(
                 (n) => n.noteNumber === noteNumber && n.startTime === startTime
               );
-              if (stillActive) {
+              if (stillRelevant) {
                 newStartTimes.add(startTime);
               }
             }

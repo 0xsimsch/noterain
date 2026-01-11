@@ -118,7 +118,7 @@ export function usePlayback() {
       // The grace period in getWaitModeNotes is only for accepting early hits
       if (state.playback.waitMode && activeNotes.length > 0) {
         // Clear satisfied notes whose note instance has ended
-        clearExpiredSatisfiedWaitNotes(activeNotes);
+        clearExpiredSatisfiedWaitNotes(file, newTime);
 
         // Check if all CURRENTLY ACTIVE notes have been played
         // Each note must be satisfied by a keypress that matched its specific startTime
