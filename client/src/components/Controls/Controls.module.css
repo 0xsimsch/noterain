@@ -32,9 +32,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
 }
 
 .headerRight {
@@ -148,7 +148,9 @@
 }
 
 .progressBar {
-  width: 200px;
+  flex: 1;
+  min-width: 80px;
+  max-width: 300px;
   cursor: pointer;
 }
 
@@ -269,4 +271,34 @@
 .speedInput:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .headerCenter {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: center;
+    padding: 4px 0;
+  }
+
+  .progressBar {
+    max-width: 400px;
+  }
+}
+
+@media (max-width: 700px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }
