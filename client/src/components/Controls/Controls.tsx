@@ -41,11 +41,21 @@ export function Controls() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const truncateFilename = (name: string, maxLength = 25): string => {
+    if (name.length <= maxLength) return name;
+    const ext = name.lastIndexOf('.') > 0 ? name.slice(name.lastIndexOf('.')) : '';
+    const baseName = name.slice(0, name.length - ext.length);
+    const truncatedLength = maxLength - ext.length - 3;
+    return baseName.slice(0, truncatedLength) + '...' + ext;
+  };
+
   return (
     <div className={styles.controls}>
       {/* Header row - always visible */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
+          <img src="/logo.png" alt="NoteRain" className={styles.logo} />
+
           {/* File controls */}
           <div className={styles.section}>
             <button
@@ -70,8 +80,8 @@ export function Controls() {
               >
                 <option value="">Select file...</option>
                 {files.map((file) => (
-                  <option key={file.id} value={file.id}>
-                    {file.name}
+                  <option key={file.id} value={file.id} title={file.name}>
+                    {truncateFilename(file.name)}
                   </option>
                 ))}
               </select>
@@ -83,47 +93,90 @@ export function Controls() {
               </button>
             )}
           </div>
+        </div>
 
-          {/* Playback controls */}
-          <div className={styles.section}>
-            <button
-              className={`${styles.button} ${styles.playButton}`}
-              onClick={togglePlay}
-              disabled={!currentFile}
-            >
-              {isPlaying ? '⏸' : '▶'}
-            </button>
+        {/* Playback controls - centered */}
+        <div className={styles.headerCenter}>
+          <button
+            className={`${styles.button} ${styles.playButton}`}
+            onClick={togglePlay}
+            disabled={!currentFile}
+          >
+            {isPlaying ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" />
+                <rect x="14" y="4" width="4" height="16" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
 
-            <button
-              className={styles.button}
-              onClick={stop}
-              disabled={!currentFile}
-            >
-              ⏹
-            </button>
+          <button
+            className={`${styles.button} ${styles.playButton}`}
+            onClick={stop}
+            disabled={!currentFile}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" />
+            </svg>
+          </button>
 
-            <div className={styles.timeDisplay}>
-              {formatTime(currentTime)} / {formatTime(currentFile?.duration || 0)}
-              {currentFile && (
-                <span className={styles.measureDisplay}>
-                  M{Math.floor(currentTime / getSecondsPerMeasure(currentFile)) + 1}/{getMeasureCount(currentFile)}
-                </span>
-              )}
-            </div>
-
-            <input
-              type="range"
-              className={styles.progressBar}
-              min="0"
-              max="100"
-              value={getProgress() * 100}
-              onChange={(e) => seekToPercent(parseFloat(e.target.value) / 100)}
-              disabled={!currentFile}
-            />
+          <div className={styles.timeDisplay}>
+            {formatTime(currentTime)} / {formatTime(currentFile?.duration || 0)}
+            {currentFile && (
+              <span className={styles.measureDisplay}>
+                M{Math.floor(currentTime / getSecondsPerMeasure(currentFile)) + 1}/{getMeasureCount(currentFile)}
+              </span>
+            )}
           </div>
+
+          <input
+            type="range"
+            className={styles.progressBar}
+            min="0"
+            max="100"
+            value={getProgress() * 100}
+            onChange={(e) => seekToPercent(parseFloat(e.target.value) / 100)}
+            disabled={!currentFile}
+          />
         </div>
 
         <div className={styles.headerRight}>
+          {/* Volume control */}
+          <div className={styles.volumeControl}>
+            <button
+              className={`${styles.button} ${styles.iconButton}`}
+              onClick={() => updateSettings({ audioEnabled: !settings.audioEnabled })}
+              title={settings.audioEnabled ? 'Mute audio' : 'Enable audio'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                {settings.audioEnabled && (
+                  <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                )}
+                {!settings.audioEnabled && (
+                  <path d="M16.5 12l4-4m0 8l-4-4" stroke="currentColor" strokeWidth="2" fill="none"/>
+                )}
+              </svg>
+            </button>
+            {settings.audioEnabled && (
+              <input
+                type="range"
+                className={styles.volumeSlider}
+                min="0"
+                max="100"
+                value={settings.volume * 100}
+                onChange={(e) =>
+                  updateSettings({ volume: parseFloat(e.target.value) / 100 })
+                }
+                title={`Volume: ${Math.round(settings.volume * 100)}%`}
+              />
+            )}
+          </div>
+
           {/* Theme toggle */}
           <button
             className={`${styles.button} ${styles.iconButton}`}
@@ -274,31 +327,6 @@ export function Controls() {
             </div>
           )}
 
-          {/* Audio toggle */}
-          <div className={styles.gridItem}>
-            <label className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={settings.audioEnabled}
-                onChange={(e) => updateSettings({ audioEnabled: e.target.checked })}
-              />
-              Audio
-            </label>
-
-            {settings.audioEnabled && (
-              <input
-                type="range"
-                className={styles.slider}
-                min="0"
-                max="100"
-                value={settings.volume * 100}
-                onChange={(e) =>
-                  updateSettings({ volume: parseFloat(e.target.value) / 100 })
-                }
-              />
-            )}
-          </div>
-
           {/* MIDI input selector */}
           <div className={styles.gridItem}>
             <label className={styles.label}>MIDI Input:</label>
@@ -323,52 +351,45 @@ export function Controls() {
           </div>
 
           {/* Track list */}
-          {currentFile && currentFile.tracks.length > 0 && (
-            <div className={`${styles.gridItem} ${styles.gridItemWide}`}>
-              <label className={styles.label}>Tracks:</label>
-              <div className={styles.trackList}>
-                {currentFile.tracks.map((track) => (
-                  <div
-                    key={track.index}
-                    className={styles.trackItem}
-                    style={{ borderLeftColor: track.color }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={track.enabled}
-                      onChange={() =>
-                        useMidiStore.getState().toggleTrack(currentFile.id, track.index)
-                      }
-                    />
-                    <span className={styles.trackName}>{track.name}</span>
-                    <button
-                      className={`${styles.trackButton} ${(track.renderOnly || track.enabled) ? styles.active : styles.crossed}`}
-                      onClick={() =>
-                        useMidiStore.getState().toggleTrackRenderOnly(currentFile.id, track.index)
-                      }
-                      title={track.renderOnly ? 'Hide track' : 'Show track visually'}
-                      disabled={track.enabled}
-                    >
-                      👁
-                    </button>
-                    <button
-                      className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
-                      onClick={() =>
-                        useMidiStore.getState().toggleTrackPlayAudio(currentFile.id, track.index)
-                      }
-                      title={track.playAudio ? 'Mute track' : 'Play track audio'}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3 9v6h4l5 5V4L7 9H3z"/>
-                        {track.playAudio && <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>}
-                        {!track.playAudio && <path d="M19 12l-4-4m0 8l4-4" stroke="currentColor" strokeWidth="2" fill="none"/>}
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
+          {currentFile && currentFile.tracks.length > 0 && currentFile.tracks.map((track) => (
+            <div
+              key={track.index}
+              className={styles.gridItem}
+              style={{ borderLeftColor: track.color, borderLeftWidth: 3, borderLeftStyle: 'solid' }}
+            >
+              <input
+                type="checkbox"
+                checked={track.enabled}
+                onChange={() =>
+                  useMidiStore.getState().toggleTrack(currentFile.id, track.index)
+                }
+              />
+              <span className={styles.trackName}>{track.name}</span>
+              <button
+                className={`${styles.trackButton} ${(track.renderOnly || track.enabled) ? styles.active : styles.crossed}`}
+                onClick={() =>
+                  useMidiStore.getState().toggleTrackRenderOnly(currentFile.id, track.index)
+                }
+                title={track.renderOnly ? 'Hide track' : 'Show track visually'}
+                disabled={track.enabled}
+              >
+                👁
+              </button>
+              <button
+                className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
+                onClick={() =>
+                  useMidiStore.getState().toggleTrackPlayAudio(currentFile.id, track.index)
+                }
+                title={track.playAudio ? 'Mute track' : 'Play track audio'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                  {track.playAudio && <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>}
+                  {!track.playAudio && <path d="M19 12l-4-4m0 8l4-4" stroke="currentColor" strokeWidth="2" fill="none"/>}
+                </svg>
+              </button>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>

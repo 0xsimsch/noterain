@@ -12,7 +12,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 8px;
+  padding: 2px 8px;
   gap: 8px;
 }
 
@@ -23,10 +23,35 @@
   flex-wrap: wrap;
 }
 
+.logo {
+  height: 36px;
+  width: auto;
+}
+
+.headerCenter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .headerRight {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.volumeControl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.volumeSlider {
+  width: 80px;
+  cursor: pointer;
 }
 
 .grid {
@@ -48,9 +73,6 @@
   border: 1px solid var(--border-color);
 }
 
-.gridItemWide {
-  grid-column: 1 / -1;
-}
 
 .section {
   display: flex;
@@ -85,8 +107,13 @@
 
 .playButton {
   width: 32px;
-  padding: 5px;
+  height: 32px;
+  padding: 0;
   font-size: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  line-height: 1;
 }
 
 .iconButton {
@@ -163,27 +190,6 @@
   color: var(--text-muted);
 }
 
-.trackList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.trackItem {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: var(--bg-elevated);
-  border-radius: 4px;
-  border-left: 3px solid;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.trackItem:hover {
-  background: var(--bg-overlay);
-}
 
 .trackName {
   cursor: pointer;
