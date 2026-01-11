@@ -46,6 +46,7 @@ A modern web-based MIDI player and piano learning tool with falling notes visual
 - Interactive keys (click/touch to play)
 - Visual feedback for playback and live input
 - Note name labels
+- Fit to song option (shows only the note range used in the song)
 
 ### Track Management
 - **Enable/Disable Tracks** - Toggle tracks for playback
@@ -56,7 +57,6 @@ A modern web-based MIDI player and piano learning tool with falling notes visual
 ### Note Coloring
 - **By Track** - Notes colored by their track
 - **By Pitch** - Rainbow spectrum based on note pitch
-- **Hand Colors** - Configurable left/right hand colors (split at middle C)
 
 ### MIDI Input
 - WebMIDI support for hardware keyboards
@@ -79,6 +79,11 @@ A modern web-based MIDI player and piano learning tool with falling notes visual
 - Multiple file support with easy switching
 - Export to MIDI
 - Persistent settings (theme, volume, colors, MIDI device)
+
+### PWA Support
+- Install as a standalone app on desktop or mobile
+- Automatic updates when new versions are available
+- Offline support with cached piano samples
 
 ## Getting Started
 
@@ -106,6 +111,15 @@ bun run build
 
 # Start production server
 bun run start:prod
+```
+
+### Docker
+
+```bash
+# Build and run with Docker
+bun run build
+docker build -t noterain .
+docker run -p 3000:3000 noterain
 ```
 
 ## Usage
@@ -152,6 +166,9 @@ piano/
 Piano samples from [VSCO Community Edition](https://versilian-studios.com/vsco-community/) by Versilian Studios - [CC0 (Public Domain)](https://creativecommons.org/publicdomain/zero/1.0/)
 
 Samples are served via [tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments).
+
+### Sheet Music Rendering
+Sheet music rendering powered by [VexFlow](https://www.vexflow.com/) - [MIT License](https://github.com/0xfe/vexflow/blob/master/LICENSE)
 
 ## License
 
