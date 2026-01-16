@@ -14,8 +14,10 @@ export function usePlayback() {
     toggleWaitMode,
     setActiveNotes,
     getCurrentFile,
-    clearSatisfiedWaitNotes,
-    clearExpiredSatisfiedWaitNotes,
+    buildWaitModeNoteList,
+    resetWaitModeState,
+    advanceWaitModeReached,
+    hasUnsatisfiedWaitNotes,
     setLoopRange,
     toggleLoop,
     clearLoop,
@@ -57,6 +59,9 @@ export function usePlayback() {
     // Initialize currentTimeRef from store
     currentTimeRef.current = useMidiStore.getState().playback.currentTime;
 
+    // Build the sorted note list for wait mode (index-based tracking)
+    buildWaitModeNoteList();
+
     const tick = () => {
       // Read fresh file data each tick to pick up track enabled changes
       const state = useMidiStore.getState();
@@ -75,7 +80,7 @@ export function usePlayback() {
       if (Math.abs(storeTime - currentTimeRef.current) > 0.1) {
         currentTimeRef.current = storeTime;
         scheduledNotesRef.current.clear(); // Clear scheduled notes on seek
-        clearSatisfiedWaitNotes(); // Clear satisfied notes on seek
+        resetWaitModeState(storeTime); // Reset wait mode cursor and satisfaction
       }
 
       // Calculate new time using ref (not stale closure)
@@ -96,7 +101,7 @@ export function usePlayback() {
           newTime = loopStartTime;
           currentTimeRef.current = loopStartTime;
           scheduledNotesRef.current.clear(); // Prevent double-playing
-          clearSatisfiedWaitNotes(); // Clear wait mode state on loop
+          resetWaitModeState(loopStartTime); // Reset wait mode on loop
           seek(loopStartTime);
           animationFrameRef.current = requestAnimationFrame(tick);
           return;
@@ -113,29 +118,19 @@ export function usePlayback() {
       const activeNotes = getActiveNotesAtTime(file, newTime);
       const activeNoteNumbers = new Set(activeNotes.map((n) => n.noteNumber));
 
-      // Wait mode: don't advance time until user plays the required notes
-      // Use activeNotes (no grace period) for determining WHEN to wait
-      // The grace period in getWaitModeNotes is only for accepting early hits
-      if (state.playback.waitMode && activeNotes.length > 0) {
-        // Clear satisfied notes whose note instance has ended
-        clearExpiredSatisfiedWaitNotes(file, newTime);
+      // Wait mode: index-based tracking - no timing issues!
+      if (state.playback.waitMode) {
+        // Advance the cursor to include any notes we've reached at newTime
+        advanceWaitModeReached(newTime);
 
-        // Check if all CURRENTLY ACTIVE notes have been played
-        // Each note must be satisfied by a keypress that matched its specific startTime
-        const satisfiedNotes = useMidiStore.getState().satisfiedWaitNotes;
-        const allPlayed = activeNotes.every((note) => {
-          const satisfiedStartTimes = satisfiedNotes.get(note.noteNumber);
-          return satisfiedStartTimes?.has(note.startTime) ?? false;
-        });
-
-        if (!allPlayed) {
+        // Check if there are unsatisfied notes that are still active at newTime
+        if (hasUnsatisfiedWaitNotes(newTime)) {
           // Don't advance time - keep currentTimeRef at prevTime
           currentTimeRef.current = prevTime;
           // Still update the animation frame to keep checking
           animationFrameRef.current = requestAnimationFrame(tick);
           return;
         }
-        // All notes were played - continue advancing
       }
 
       // Find newly started notes (only play audio for tracks with playAudio enabled)
@@ -186,8 +181,10 @@ export function usePlayback() {
     seek,
     setActiveNotes,
     playNote,
-    clearSatisfiedWaitNotes,
-    clearExpiredSatisfiedWaitNotes,
+    buildWaitModeNoteList,
+    resetWaitModeState,
+    advanceWaitModeReached,
+    hasUnsatisfiedWaitNotes,
   ]);
 
   // Reset scheduled notes when stopping
@@ -249,8 +246,8 @@ export function usePlayback() {
   const handleStop = useCallback(() => {
     stopAll();
     stop();
-    clearSatisfiedWaitNotes();
-  }, [stop, stopAll, clearSatisfiedWaitNotes]);
+    resetWaitModeState(0);
+  }, [stop, stopAll, resetWaitModeState]);
 
   /** Seek to position (0-1) */
   const seekToPercent = useCallback(

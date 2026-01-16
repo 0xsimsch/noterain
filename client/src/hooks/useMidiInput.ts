@@ -1,7 +1,20 @@
-import { useEffect, useState } from 'react';
-import { WebMidi, NoteMessageEvent } from 'webmidi';
+import { useEffect, useState, useRef } from 'react';
+import { WebMidi, NoteMessageEvent, ControlChangeMessageEvent } from 'webmidi';
 import { useMidiStore } from '../stores/midiStore';
 import type { MidiDevice } from '../types/midi';
+
+/** MIDI CC number for sustain pedal */
+const SUSTAIN_CC = 64;
+
+/** Options for the useMidiInput hook */
+export interface UseMidiInputOptions {
+  /** Called when a note is pressed on the MIDI device */
+  onNoteOn?: (noteNumber: number, velocity: number) => void;
+  /** Called when a note is released on the MIDI device */
+  onNoteOff?: (noteNumber: number) => void;
+  /** Called when the sustain pedal state changes */
+  onSustain?: (isPressed: boolean) => void;
+}
 
 /** Patterns that indicate virtual/software MIDI devices */
 const VIRTUAL_DEVICE_PATTERNS = [
@@ -27,7 +40,7 @@ function isVirtualDevice(name: string, manufacturer: string): boolean {
 }
 
 /** Hook for connecting to MIDI devices */
-export function useMidiInput() {
+export function useMidiInput(options: UseMidiInputOptions = {}) {
   const {
     devices,
     setDevices,
@@ -39,6 +52,10 @@ export function useMidiInput() {
   } = useMidiStore();
 
   const [isWebMidiReady, setIsWebMidiReady] = useState(WebMidi.enabled);
+
+  // Store callbacks in refs to avoid re-subscribing when callbacks change
+  const callbacksRef = useRef(options);
+  callbacksRef.current = options;
 
   // Initialize WebMidi once
   useEffect(() => {
@@ -171,18 +188,30 @@ export function useMidiInput() {
     const handleNoteOn = (e: NoteMessageEvent) => {
       setLiveNote(e.note.number, true);
       addSatisfiedWaitNote(e.note.number);
+      callbacksRef.current.onNoteOn?.(e.note.number, e.note.rawAttack);
     };
 
     const handleNoteOff = (e: NoteMessageEvent) => {
       setLiveNote(e.note.number, false);
+      callbacksRef.current.onNoteOff?.(e.note.number);
+    };
+
+    const handleControlChange = (e: ControlChangeMessageEvent) => {
+      // Handle sustain pedal (CC64)
+      if (e.controller.number === SUSTAIN_CC) {
+        const isPressed = (e.rawValue ?? 0) >= 64;
+        callbacksRef.current.onSustain?.(isPressed);
+      }
     };
 
     input.addListener('noteon', handleNoteOn);
     input.addListener('noteoff', handleNoteOff);
+    input.addListener('controlchange', handleControlChange);
 
     return () => {
       input.removeListener('noteon', handleNoteOn);
       input.removeListener('noteoff', handleNoteOff);
+      input.removeListener('controlchange', handleControlChange);
       clearLiveNotes();
     };
   }, [isWebMidiReady, selectedInputId, setLiveNote, clearLiveNotes, addSatisfiedWaitNote]);

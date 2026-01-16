@@ -148,6 +148,8 @@ export interface Settings {
   noteColorMode: NoteColorMode;
   /** Fit keyboard to only show notes in the song */
   fitKeyboardToSong: boolean;
+  /** Play audio when hardware MIDI notes are played */
+  playMidiInputAudio: boolean;
 }
 
 /** Default settings */
@@ -163,6 +165,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'latte',
   noteColorMode: 'track',
   fitKeyboardToSong: false,
+  playMidiInputAudio: true,
 };
 
 /** Colors for each pitch class (C, C#, D, ... B) - distinct rainbow spectrum */

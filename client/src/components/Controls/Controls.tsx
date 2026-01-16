@@ -241,6 +241,18 @@ export function Controls() {
             </label>
           </div>
 
+          {/* Play MIDI input audio toggle */}
+          <div className={styles.gridItem}>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={settings.playMidiInputAudio}
+                onChange={() => updateSettings({ playMidiInputAudio: !settings.playMidiInputAudio })}
+              />
+              Play MIDI input
+            </label>
+          </div>
+
           {/* Speed control */}
           <div className={styles.gridItem}>
             <label className={styles.label}>Speed:</label>

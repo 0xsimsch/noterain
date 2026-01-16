@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 async function bootstrap() {
+  console.log('Static files path:', path.join(process.cwd(), 'dist', 'client'));
   const certsPath = path.join(__dirname, '..', 'certs');
   const keyPath = path.join(certsPath, 'key.pem');
   const certPath = path.join(certsPath, 'cert.pem');
