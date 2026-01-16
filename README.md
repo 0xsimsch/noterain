@@ -65,8 +65,8 @@ A modern web-based MIDI player and piano learning tool with falling notes visual
 - Live note visualization on keyboard and falling notes
 
 ### Audio
-- High-quality piano samples (VSCO Community Edition)
-- Velocity-sensitive playback
+- High-quality piano samples (Salamander Grand Piano)
+- 16 velocity layers for realistic dynamics
 - Master volume control
 - Polyphonic playback
 
@@ -135,7 +135,7 @@ docker run -p 3000:3000 noterain
 
 - **Frontend**: React 19, TypeScript, Vite
 - **Visualization**: PixiJS (falling notes), VexFlow (sheet music)
-- **Audio**: Tone.js with VSCO piano samples
+- **Audio**: Tone.js with Salamander Grand Piano samples
 - **MIDI**: WebMIDI API, midi-file parser
 - **State**: Zustand with localStorage persistence
 - **Backend**: NestJS (serves static files and API)
@@ -163,9 +163,7 @@ piano/
 ## Attributions
 
 ### Piano Samples
-Piano samples from [VSCO Community Edition](https://versilian-studios.com/vsco-community/) by Versilian Studios - [CC0 (Public Domain)](https://creativecommons.org/publicdomain/zero/1.0/)
-
-Samples are served via [tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments).
+Piano samples from [Salamander Grand Piano V3](https://sfzinstruments.github.io/pianos/salamander) by Alexander Holm - [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
 
 ### Sheet Music Rendering
 Sheet music rendering powered by [VexFlow](https://www.vexflow.com/) - [MIT License](https://github.com/0xfe/vexflow/blob/master/LICENSE)

@@ -6,9 +6,18 @@ import { AppService } from './app.service';
 
 @Module({
   imports: [
+    // Serve audio samples
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, 'client'),
-      exclude: ['/api/{*path}'],
+      rootPath: join(process.cwd(), 'dist', 'client', 'samples'),
+      serveRoot: '/samples',
+      serveStaticOptions: {
+        index: false,
+      },
+    }),
+    // Serve main app
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'dist', 'client'),
+      exclude: ['/api/**', '/samples/**'],
     }),
   ],
   controllers: [AppController],
