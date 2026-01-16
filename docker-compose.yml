@@ -8,4 +8,6 @@ services:
     environment:
       - FORCE_HTTP=true
       - PORT=3000
+    volumes:
+      - ./client/public/samples:/app/dist/client/samples:ro
     restart: unless-stopped
