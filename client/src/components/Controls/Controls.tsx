@@ -20,7 +20,11 @@ import { useMidiInput } from '../../hooks/useMidiInput';
 import { useMidiStore, getMeasureCount, getSecondsPerMeasure } from '../../stores/midiStore';
 import styles from './Controls.module.css';
 
-export function Controls() {
+interface ControlsProps {
+  isLoadingFullVelocity: boolean;
+}
+
+export function Controls({ isLoadingFullVelocity }: ControlsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [tracksDropdownOpen, setTracksDropdownOpen] = useState(false);
@@ -250,6 +254,11 @@ export function Controls() {
                 onChange={() => updateSettings({ playMidiInputAudio: !settings.playMidiInputAudio })}
               />
               Play MIDI input
+              {isLoadingFullVelocity && (
+                <span className={styles.loadingIndicator}>
+                  Loading samples...
+                </span>
+              )}
             </label>
           </div>
 

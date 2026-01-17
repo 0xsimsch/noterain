@@ -12,6 +12,9 @@ import { getNoteNameFromNumber } from '../types/midi';
 /** Velocity layers to load (1=softest, 16=loudest) */
 const VELOCITY_LAYERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
 
+/** Default velocity layer for initial load (medium velocity) */
+const DEFAULT_VELOCITY_LAYER = 8;
+
 /** Map MIDI velocity (0-127) to the closest velocity layer */
 function getVelocityLayer(velocity: number): number {
   // Quadratic curve: requires stronger hits for higher layers
@@ -20,6 +23,26 @@ function getVelocityLayer(velocity: number): number {
   const curved = normalized * normalized;
   const layer = Math.ceil(curved * 16);
   return Math.max(1, Math.min(16, layer));
+}
+
+/** Get the best available layer from loaded layers */
+function getBestAvailableLayer(velocity: number, loadedLayers: Set<number>): number {
+  const idealLayer = getVelocityLayer(velocity);
+  if (loadedLayers.has(idealLayer)) return idealLayer;
+
+  // Find nearest loaded layer
+  let nearest = DEFAULT_VELOCITY_LAYER;
+  let minDistance = Math.abs(idealLayer - nearest);
+
+  for (const layer of loadedLayers) {
+    const distance = Math.abs(idealLayer - layer);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = layer;
+    }
+  }
+
+  return nearest;
 }
 
 /** Sample notes available in Salamander (every minor third) */
@@ -33,9 +56,6 @@ const SAMPLE_NOTES = [
 function getBaseUrl(velocityLayer: number): string {
   return `/samples/piano/v${velocityLayer}/`;
 }
-
-/** Total number of sample files */
-const TOTAL_SAMPLES = VELOCITY_LAYERS.length * SAMPLE_NOTES.length;
 
 /** Loading phases */
 type LoadingPhase = 'downloading' | 'decoding' | 'done';
@@ -55,111 +75,251 @@ export function useAudioEngine() {
   const [decodeProgress, setDecodeProgress] = useState(0);
   const loadedCountRef = useRef(0);
 
+  // Track loaded velocity layers
+  const loadedLayersRef = useRef<Set<number>>(new Set());
+  const [isLoadingFullVelocity, setIsLoadingFullVelocity] = useState(false);
+  const [fullVelocityProgress, setFullVelocityProgress] = useState(0);
+  const fullVelocityAbortRef = useRef<AbortController | null>(null);
+  // Blob URL cache shared between initial and on-demand loading
+  const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
+
   // Sustain pedal state
   const sustainRef = useRef(false);
   const sustainedNotesRef = useRef<Set<number>>(new Set());
 
-  // Initialize all velocity layer samplers with pre-fetching
+  // Initialize with only the default velocity layer for fast initial load
   useEffect(() => {
     const samplers = new Map<number, Tone.Sampler>();
     // Reset counters on each mount (important for React Strict Mode)
     loadedCountRef.current = 0;
     isLoadedRef.current = false;
+    loadedLayersRef.current = new Set();
 
-    // Cache for downloaded blob URLs
-    const blobUrlCache = new Map<string, string>();
     let downloadedCount = 0;
     let aborted = false;
+    const initialSampleCount = SAMPLE_NOTES.length; // Only 30 samples for layer 8
 
-    async function loadSamples() {
-      // Phase 1: Download all samples
-      console.log(`[AudioEngine] Downloading ${TOTAL_SAMPLES} samples...`);
+    async function loadInitialLayer() {
+      // Phase 1: Download only the default velocity layer
+      console.log(`[AudioEngine] Downloading ${initialSampleCount} samples (layer ${DEFAULT_VELOCITY_LAYER})...`);
 
       const downloadPromises: Promise<void>[] = [];
+      const layer = DEFAULT_VELOCITY_LAYER;
 
-      for (const layer of VELOCITY_LAYERS) {
-        for (const note of SAMPLE_NOTES) {
-          const url = `${getBaseUrl(layer)}${note}v${layer}.mp3`;
-          const promise = fetch(url)
-            .then(response => {
-              if (!response.ok) throw new Error(`Failed to fetch ${url}`);
-              return response.blob();
-            })
-            .then(blob => {
-              if (aborted) return;
-              const blobUrl = URL.createObjectURL(blob);
-              blobUrlCache.set(url, blobUrl);
-              downloadedCount++;
-              setDownloadProgress(downloadedCount);
-            })
-            .catch(err => {
-              console.warn(`[AudioEngine] Failed to download ${url}:`, err);
-              downloadedCount++;
-              setDownloadProgress(downloadedCount);
-            });
-          downloadPromises.push(promise);
-        }
+      for (const note of SAMPLE_NOTES) {
+        const url = `${getBaseUrl(layer)}${note}v${layer}.mp3`;
+        const promise = fetch(url)
+          .then(response => {
+            if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+            return response.blob();
+          })
+          .then(blob => {
+            if (aborted) return;
+            const blobUrl = URL.createObjectURL(blob);
+            blobUrlCacheRef.current.set(url, blobUrl);
+            downloadedCount++;
+            setDownloadProgress(downloadedCount);
+          })
+          .catch(err => {
+            console.warn(`[AudioEngine] Failed to download ${url}:`, err);
+            downloadedCount++;
+            setDownloadProgress(downloadedCount);
+          });
+        downloadPromises.push(promise);
       }
 
       await Promise.all(downloadPromises);
 
       if (aborted) return;
 
-      // Phase 2: Decode samples with Tone.js
-      console.log('[AudioEngine] All samples downloaded, decoding...');
+      // Phase 2: Decode the default layer with Tone.js
+      console.log('[AudioEngine] Initial samples downloaded, decoding...');
       setLoadingPhase('decoding');
 
-      for (const layer of VELOCITY_LAYERS) {
-        if (aborted) return;
-
-        // Build URLs using blob cache
-        const urls: Record<string, string> = {};
-        for (const note of SAMPLE_NOTES) {
-          const originalUrl = `${getBaseUrl(layer)}${note}v${layer}.mp3`;
-          const blobUrl = blobUrlCache.get(originalUrl);
-          const toneNote = note.replace('Ds', 'D#').replace('Fs', 'F#');
-          urls[toneNote] = blobUrl || originalUrl;
-        }
-
-        const sampler = new Tone.Sampler({
-          urls,
-          onload: () => {
-            if (aborted) return;
-            loadedCountRef.current++;
-            setDecodeProgress(loadedCountRef.current);
-            console.log(`[AudioEngine] Velocity layer ${layer} decoded (${loadedCountRef.current}/${VELOCITY_LAYERS.length})`);
-
-            if (loadedCountRef.current === VELOCITY_LAYERS.length) {
-              console.log('[AudioEngine] All velocity layers ready');
-              isLoadedRef.current = true;
-              setLoadingPhase('done');
-              setIsLoading(false);
-            }
-          },
-          onerror: (err) => {
-            console.warn(`[AudioEngine] Failed to decode velocity layer ${layer}:`, err);
-          },
-        }).toDestination();
-
-        samplers.set(layer, sampler);
+      // Build URLs using blob cache
+      const urls: Record<string, string> = {};
+      for (const note of SAMPLE_NOTES) {
+        const originalUrl = `${getBaseUrl(layer)}${note}v${layer}.mp3`;
+        const blobUrl = blobUrlCacheRef.current.get(originalUrl);
+        const toneNote = note.replace('Ds', 'D#').replace('Fs', 'F#');
+        urls[toneNote] = blobUrl || originalUrl;
       }
 
+      const sampler = new Tone.Sampler({
+        urls,
+        onload: () => {
+          if (aborted) return;
+          loadedCountRef.current = 1;
+          setDecodeProgress(1);
+          console.log(`[AudioEngine] Default velocity layer ${layer} ready`);
+          loadedLayersRef.current.add(layer);
+          isLoadedRef.current = true;
+          setLoadingPhase('done');
+          setIsLoading(false);
+        },
+        onerror: (err) => {
+          console.warn(`[AudioEngine] Failed to decode velocity layer ${layer}:`, err);
+        },
+      }).toDestination();
+
+      samplers.set(layer, sampler);
       samplersRef.current = samplers;
     }
 
-    loadSamples();
+    loadInitialLayer();
 
     return () => {
       aborted = true;
+      // Abort any ongoing full velocity load
+      fullVelocityAbortRef.current?.abort();
       for (const sampler of samplersRef.current.values()) {
         sampler.dispose();
       }
       // Clean up blob URLs
-      for (const blobUrl of blobUrlCache.values()) {
+      for (const blobUrl of blobUrlCacheRef.current.values()) {
         URL.revokeObjectURL(blobUrl);
       }
+      blobUrlCacheRef.current.clear();
     };
   }, []);
+
+  // Load remaining velocity layers when playMidiInputAudio is enabled
+  useEffect(() => {
+    // Only trigger on-demand loading when playMidiInputAudio is enabled
+    if (!settings.playMidiInputAudio) {
+      // Abort any ongoing load if user disables the setting
+      if (fullVelocityAbortRef.current) {
+        fullVelocityAbortRef.current.abort();
+        fullVelocityAbortRef.current = null;
+        setIsLoadingFullVelocity(false);
+      }
+      return;
+    }
+
+    // Check if all layers are already loaded
+    if (loadedLayersRef.current.size === VELOCITY_LAYERS.length) {
+      return;
+    }
+
+    // Don't start if initial load isn't complete yet
+    if (!isLoadedRef.current) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    fullVelocityAbortRef.current = abortController;
+
+    async function loadRemainingLayers() {
+      const remainingLayers = VELOCITY_LAYERS.filter(
+        layer => !loadedLayersRef.current.has(layer)
+      );
+
+      if (remainingLayers.length === 0) return;
+
+      console.log(`[AudioEngine] Loading ${remainingLayers.length} remaining velocity layers...`);
+      setIsLoadingFullVelocity(true);
+      setFullVelocityProgress(0);
+
+      let loadedCount = 0;
+      const totalRemaining = remainingLayers.length;
+
+      for (const layer of remainingLayers) {
+        if (abortController.signal.aborted) {
+          console.log('[AudioEngine] On-demand loading aborted');
+          setIsLoadingFullVelocity(false);
+          return;
+        }
+
+        // Download samples for this layer
+        const downloadPromises: Promise<void>[] = [];
+
+        for (const note of SAMPLE_NOTES) {
+          const url = `${getBaseUrl(layer)}${note}v${layer}.mp3`;
+          // Skip if already cached
+          if (blobUrlCacheRef.current.has(url)) continue;
+
+          const promise = fetch(url, { signal: abortController.signal })
+            .then(response => {
+              if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+              return response.blob();
+            })
+            .then(blob => {
+              if (abortController.signal.aborted) return;
+              const blobUrl = URL.createObjectURL(blob);
+              blobUrlCacheRef.current.set(url, blobUrl);
+            })
+            .catch(err => {
+              if (err.name !== 'AbortError') {
+                console.warn(`[AudioEngine] Failed to download ${url}:`, err);
+              }
+            });
+          downloadPromises.push(promise);
+        }
+
+        await Promise.all(downloadPromises);
+
+        if (abortController.signal.aborted) return;
+
+        // Build URLs and create sampler
+        const urls: Record<string, string> = {};
+        for (const note of SAMPLE_NOTES) {
+          const originalUrl = `${getBaseUrl(layer)}${note}v${layer}.mp3`;
+          const blobUrl = blobUrlCacheRef.current.get(originalUrl);
+          const toneNote = note.replace('Ds', 'D#').replace('Fs', 'F#');
+          urls[toneNote] = blobUrl || originalUrl;
+        }
+
+        // Wait for sampler to decode
+        await new Promise<void>((resolve, reject) => {
+          if (abortController.signal.aborted) {
+            reject(new Error('Aborted'));
+            return;
+          }
+
+          const sampler = new Tone.Sampler({
+            urls,
+            onload: () => {
+              if (abortController.signal.aborted) {
+                sampler.dispose();
+                resolve();
+                return;
+              }
+              samplersRef.current.set(layer, sampler);
+              loadedLayersRef.current.add(layer);
+              loadedCount++;
+              setFullVelocityProgress(loadedCount / totalRemaining);
+              console.log(`[AudioEngine] Velocity layer ${layer} loaded (${loadedCount}/${totalRemaining})`);
+              resolve();
+            },
+            onerror: (err) => {
+              console.warn(`[AudioEngine] Failed to decode velocity layer ${layer}:`, err);
+              resolve(); // Continue with other layers
+            },
+          }).toDestination();
+
+          // Apply current volume to new sampler
+          const db = settings.audioEnabled
+            ? Tone.gainToDb(settings.volume)
+            : -Infinity;
+          sampler.volume.value = db;
+        }).catch(() => {
+          // Aborted
+        });
+      }
+
+      if (!abortController.signal.aborted) {
+        console.log('[AudioEngine] All velocity layers loaded');
+        setIsLoadingFullVelocity(false);
+        fullVelocityAbortRef.current = null;
+      }
+    }
+
+    loadRemainingLayers();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [settings.playMidiInputAudio, settings.audioEnabled, settings.volume]);
 
   // Update volume on all samplers
   useEffect(() => {
@@ -192,7 +352,7 @@ export function useAudioEngine() {
         return;
       }
 
-      const layer = getVelocityLayer(velocity);
+      const layer = getBestAvailableLayer(velocity, loadedLayersRef.current);
       const sampler = samplersRef.current.get(layer);
       if (!sampler) {
         console.warn('[AudioEngine] No sampler for layer:', layer);
@@ -217,7 +377,7 @@ export function useAudioEngine() {
         return;
       }
 
-      const layer = getVelocityLayer(velocity);
+      const layer = getBestAvailableLayer(velocity, loadedLayersRef.current);
       const sampler = samplersRef.current.get(layer);
       if (!sampler) return;
 
@@ -318,7 +478,9 @@ export function useAudioEngine() {
     loadingPhase,
     downloadProgress,
     decodeProgress,
-    totalSamples: TOTAL_SAMPLES,
-    totalLayers: VELOCITY_LAYERS.length,
+    totalSamples: SAMPLE_NOTES.length, // Only initial layer
+    totalLayers: 1, // Only counting initial layer for loading screen
+    isLoadingFullVelocity,
+    fullVelocityProgress,
   };
 }

@@ -201,6 +201,11 @@
   color: var(--text-muted);
 }
 
+.loadingIndicator {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
 
 .trackName {
   cursor: pointer;

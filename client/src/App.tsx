@@ -11,7 +11,7 @@ import { useMidiStore, calculateNoteRange } from './stores/midiStore';
 import './App.css';
 
 function App() {
-  const { noteOn, noteOff, setSustain, resumeAudio, isLoading, loadingPhase, downloadProgress, decodeProgress, totalSamples, totalLayers } = useAudioEngine();
+  const { noteOn, noteOff, setSustain, resumeAudio, isLoading, loadingPhase, downloadProgress, decodeProgress, totalSamples, totalLayers, isLoadingFullVelocity } = useAudioEngine();
   const { handleDrop, currentFile } = useMidiFile();
   const { settings, setLiveNote, addSatisfiedWaitNote } = useMidiStore();
 
@@ -107,7 +107,7 @@ function App() {
         />
       )}
 
-      <Controls />
+      <Controls isLoadingFullVelocity={isLoadingFullVelocity} />
 
       <div className="main-content">
         {currentFile && settings.showSheetMusic && (
