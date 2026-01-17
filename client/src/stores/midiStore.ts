@@ -345,9 +345,18 @@ export const useMidiStore = create<MidiStore>()(
           reachedIndex++;
         }
 
+        // Pre-satisfy only notes that started STRICTLY BEFORE currentTime
+        // Notes starting exactly at currentTime should be played, not skipped
+        const preSatisfied = new Set<number>();
+        for (let i = 0; i < reachedIndex; i++) {
+          if (notes[i].startTime < currentTime) {
+            preSatisfied.add(i);
+          }
+        }
+
         set({
           waitModeSortedNotes: notes,
-          waitModeSatisfiedIndices: new Set(),
+          waitModeSatisfiedIndices: preSatisfied,
           waitModeReachedIndex: reachedIndex,
         });
       },
@@ -357,15 +366,24 @@ export const useMidiStore = create<MidiStore>()(
         const state = get();
         const time = seekTime ?? 0;
 
-        // Find the cursor position for the new time
+        // Find the cursor position for the new time (notes at time ARE reached)
         let reachedIndex = 0;
         while (reachedIndex < state.waitModeSortedNotes.length &&
                state.waitModeSortedNotes[reachedIndex].startTime <= time) {
           reachedIndex++;
         }
 
+        // Pre-satisfy only notes that started STRICTLY BEFORE seekTime
+        // Notes starting exactly at seekTime should be played, not skipped
+        const preSatisfied = new Set<number>();
+        for (let i = 0; i < reachedIndex; i++) {
+          if (state.waitModeSortedNotes[i].startTime < time) {
+            preSatisfied.add(i);
+          }
+        }
+
         set({
-          waitModeSatisfiedIndices: new Set(),
+          waitModeSatisfiedIndices: preSatisfied,
           waitModeReachedIndex: reachedIndex,
         });
       },
