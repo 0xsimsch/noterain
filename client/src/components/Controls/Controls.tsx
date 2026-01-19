@@ -231,6 +231,23 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
               />
               Wait for input
             </label>
+            {waitMode && (
+              <>
+                <label className={styles.label}>Grace:</label>
+                <select
+                  className={styles.select}
+                  value={settings.waitModeGracePeriod}
+                  onChange={(e) => updateSettings({ waitModeGracePeriod: parseInt(e.target.value) })}
+                  title="Grace period for early note hits"
+                >
+                  {[0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500].map((ms) => (
+                    <option key={ms} value={ms}>
+                      {ms}ms
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
 
           {/* Fit keyboard to song toggle */}

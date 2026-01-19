@@ -419,12 +419,13 @@ export const useMidiStore = create<MidiStore>()(
           }
 
           // Also check notes slightly ahead (grace period for early hits)
-          // Look up to WAIT_MODE_GRACE_PERIOD seconds ahead
+          // Look up to grace period seconds ahead
           const currentTime = state.playback.currentTime;
+          const gracePeriodSeconds = state.settings.waitModeGracePeriod / 1000;
           for (let i = state.waitModeReachedIndex; i < state.waitModeSortedNotes.length; i++) {
             const note = state.waitModeSortedNotes[i];
             // Stop if we're past the grace period
-            if (note.startTime > currentTime + WAIT_MODE_GRACE_PERIOD) break;
+            if (note.startTime > currentTime + gracePeriodSeconds) break;
             if (note.noteNumber === noteNumber && !state.waitModeSatisfiedIndices.has(i)) {
               const newSatisfied = new Set(state.waitModeSatisfiedIndices);
               newSatisfied.add(i);
@@ -643,14 +644,15 @@ export function getActiveNotesAtTime(file: MidiFile, time: number): MidiNote[] {
 export const WAIT_MODE_GRACE_PERIOD = 0.4;
 
 /** Get notes that should be considered for wait mode (including upcoming notes within grace period) */
-export function getWaitModeNotes(file: MidiFile, time: number): MidiNote[] {
+export function getWaitModeNotes(file: MidiFile, time: number, gracePeriodMs?: number): MidiNote[] {
+  const gracePeriod = gracePeriodMs !== undefined ? gracePeriodMs / 1000 : WAIT_MODE_GRACE_PERIOD;
   const notes: MidiNote[] = [];
   for (const track of file.tracks) {
     if (!track.enabled) continue;
     for (const note of track.notes) {
       // Include notes that are currently playing OR about to start within grace period
       const noteEnd = note.startTime + note.duration;
-      if (note.startTime <= time + WAIT_MODE_GRACE_PERIOD && noteEnd > time) {
+      if (note.startTime <= time + gracePeriod && noteEnd > time) {
         notes.push(note);
       }
     }

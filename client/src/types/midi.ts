@@ -150,6 +150,8 @@ export interface Settings {
   fitKeyboardToSong: boolean;
   /** Play audio when hardware MIDI notes are played */
   playMidiInputAudio: boolean;
+  /** Grace period in milliseconds for early note hits in wait mode */
+  waitModeGracePeriod: number;
 }
 
 /** Default settings */
@@ -166,6 +168,7 @@ export const DEFAULT_SETTINGS: Settings = {
   noteColorMode: 'track',
   fitKeyboardToSong: false,
   playMidiInputAudio: true,
+  waitModeGracePeriod: 400,
 };
 
 /** Colors for each pitch class (C, C#, D, ... B) - distinct rainbow spectrum */
