@@ -47,6 +47,10 @@
   --ctp-maroon: #be5046;
   --ctp-sapphire: var(--od-cyan);
   --ctp-crust: var(--od-bg-darker);
+
+  /* Sheet music colors (matching NotesOverlay) */
+  --sheet-note-color: #cdd6f4;
+  --sheet-stave-color: #6c7086;
 }
 
 /* Catppuccin Latte (Light) */
@@ -92,6 +96,10 @@
   --accent-hover: #e5c07b;
   --warning: var(--ctp-peach);
   --canvas-bg: var(--ctp-mantle);
+
+  /* Sheet music colors (matching NotesOverlay) */
+  --sheet-note-color: #4c4f69;
+  --sheet-stave-color: #9ca0b0;
 }
 
 html,

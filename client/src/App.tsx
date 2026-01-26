@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Controls } from './components/Controls/Controls';
 import { FallingNotes } from './components/FallingNotes/FallingNotes';
 import { LoadingScreen } from './components/LoadingScreen/LoadingScreen';
+import { NotesOverlay } from './components/NotesOverlay/NotesOverlay';
 import { SheetMusic } from './components/SheetMusic/SheetMusic';
 import { PianoKeyboard } from './components/PianoKeyboard/PianoKeyboard';
 import { useAudioEngine } from './hooks/useAudioEngine';
@@ -110,6 +111,8 @@ function App() {
       <Controls isLoadingFullVelocity={isLoadingFullVelocity} />
 
       <div className="main-content">
+        {settings.showNotesOverlay && <NotesOverlay />}
+
         {currentFile && settings.showSheetMusic && (
           <SheetMusic />
         )}

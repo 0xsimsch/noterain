@@ -152,6 +152,8 @@ export interface Settings {
   playMidiInputAudio: boolean;
   /** Grace period in milliseconds for early note hits in wait mode */
   waitModeGracePeriod: number;
+  /** Show overlay with current notes and chord names */
+  showNotesOverlay: boolean;
 }
 
 /** Default settings */
@@ -169,6 +171,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fitKeyboardToSong: false,
   playMidiInputAudio: true,
   waitModeGracePeriod: 400,
+  showNotesOverlay: false,
 };
 
 /** Colors for each pitch class (C, C#, D, ... B) - distinct rainbow spectrum */

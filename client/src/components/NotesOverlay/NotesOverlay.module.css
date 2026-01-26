@@ -1,0 +1,72 @@
+.overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+  min-width: 130px;
+  pointer-events: none;
+}
+
+.staves {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stave {
+  height: 120px;
+  overflow: visible;
+}
+
+.stave svg {
+  display: block;
+  overflow: visible;
+}
+
+.stave svg * {
+  overflow: visible;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 4px;
+  min-height: 28px;
+}
+
+.chord {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.chordRoot {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.chordSuffix {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.notes {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  text-align: center;
+  word-break: break-word;
+  max-width: 120px;
+}

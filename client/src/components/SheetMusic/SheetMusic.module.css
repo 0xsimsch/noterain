@@ -27,37 +27,58 @@
   display: block;
 }
 
-/* Style VexFlow SVG elements based on theme */
+/* Style VexFlow SVG elements based on theme - matching NotesOverlay */
+/* Notes: lighter color (noteColor) */
 .svgContainer :global(.vf-stavenote),
 .svgContainer :global(.vf-notehead),
 .svgContainer :global(.vf-stem),
 .svgContainer :global(.vf-beam),
 .svgContainer :global(.vf-flag) {
-  fill: var(--text-primary);
-  stroke: var(--text-primary);
+  fill: var(--sheet-note-color) !important;
+  stroke: var(--sheet-note-color) !important;
 }
 
+/* Staff lines: stave color */
 .svgContainer :global(.vf-stave) line,
 .svgContainer :global(.vf-stave) path {
-  stroke: var(--text-secondary);
+  stroke: var(--sheet-stave-color) !important;
 }
 
+/* Clef, time sig, key sig: stave color (same as NotesOverlay - darker) */
 .svgContainer :global(.vf-clef),
 .svgContainer :global(.vf-timesig),
-.svgContainer :global(.vf-keysig),
-.svgContainer :global(.vf-accidental) {
-  fill: var(--text-primary);
+.svgContainer :global(.vf-keysig) {
+  fill: var(--sheet-stave-color) !important;
+  stroke: var(--sheet-stave-color) !important;
 }
 
-/* Ensure all text elements in VexFlow use theme color */
+.svgContainer :global(.vf-clef path),
+.svgContainer :global(.vf-clef text),
+.svgContainer :global(.vf-timesig path),
+.svgContainer :global(.vf-timesig text),
+.svgContainer :global(.vf-keysig path),
+.svgContainer :global(.vf-keysig text) {
+  fill: var(--sheet-stave-color) !important;
+  stroke: var(--sheet-stave-color) !important;
+}
+
+/* Note accidentals should match note color */
+.svgContainer :global(.vf-accidental),
+.svgContainer :global(.vf-accidental path) {
+  fill: var(--sheet-note-color) !important;
+  stroke: var(--sheet-note-color) !important;
+}
+
+/* Text elements default to note color */
 .svgContainer :global(text) {
-  fill: var(--text-primary);
+  fill: var(--sheet-note-color) !important;
 }
 
-/* Key signature accidentals */
-.svgContainer :global(.vf-keysig) path {
-  fill: var(--text-primary);
-  stroke: var(--text-primary);
+/* Override: time sig and key sig text should use stave color */
+.svgContainer :global(.vf-timesig) text,
+.svgContainer :global(.vf-keysig) text,
+.svgContainer :global(.vf-clef) text {
+  fill: var(--sheet-stave-color) !important;
 }
 
 .highlights {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
   Play,
   Pause,
@@ -54,6 +54,13 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
   const { inputs, selectedInput, selectInput, isEnabled } = useMidiInput();
 
   const { settings, updateSettings } = useMidiStore();
+
+  // Auto-collapse when playback starts
+  useEffect(() => {
+    if (isPlaying) {
+      setIsExpanded(false);
+    }
+  }, [isPlaying]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -276,6 +283,18 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
                   Loading samples...
                 </span>
               )}
+            </label>
+          </div>
+
+          {/* Notes overlay toggle */}
+          <div className={styles.gridItem}>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={settings.showNotesOverlay}
+                onChange={() => updateSettings({ showNotesOverlay: !settings.showNotesOverlay })}
+              />
+              Show notes/chords
             </label>
           </div>
 
