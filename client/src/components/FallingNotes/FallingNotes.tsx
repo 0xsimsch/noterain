@@ -89,8 +89,8 @@ function drawGrid(
   graphics.clear();
 
   const isLight = theme === 'latte';
-  const lineColor = isLight ? 0xc8c2b8 : 0x3d3632;
-  const blackKeyBg = isLight ? 0xebe7e0 : 0x1e1b18;
+  const lineColor = isLight ? 0xc8c2b8 : 0x3e4451;
+  const blackKeyBg = isLight ? 0xebe7e0 : 0x21252b;
 
   // Draw background shading for black key lanes
   for (let note = minNote; note <= maxNote; note++) {
@@ -214,7 +214,7 @@ export function FallingNotes({
       try {
         // Get theme-appropriate background color
         const theme = useMidiStore.getState().settings.theme;
-        const bgColor = theme === 'latte' ? 0xf5f2ed : 0x171411;
+        const bgColor = theme === 'latte' ? 0xf5f2ed : 0x1e2127;
 
         await app.init({
           backgroundColor: bgColor,
@@ -502,7 +502,7 @@ export function FallingNotes({
     const notesContainer = notesContainerRef.current;
     if (!app || !isReady) return;
 
-    const bgColor = settings.theme === 'latte' ? 0xf5f2ed : 0x171411;
+    const bgColor = settings.theme === 'latte' ? 0xf5f2ed : 0x1e2127;
     app.renderer.background.color = bgColor;
 
     // Redraw grid with new theme colors
