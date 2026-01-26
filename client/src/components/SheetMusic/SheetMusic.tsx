@@ -655,6 +655,7 @@ export function SheetMusic({
   const containerRef = useRef<HTMLDivElement>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const highlightsRef = useRef<HTMLDivElement>(null);
+  const progressLineRef = useRef<HTMLDivElement>(null);
   const [renderedHeight, setRenderedHeight] = useState(0);
 
   // Store note positions for highlighting
@@ -1180,6 +1181,37 @@ export function SheetMusic({
         }
       }
 
+      // Update progress line position
+      const progressLine = progressLineRef.current;
+      if (progressLine) {
+        const svgContainer = svgContainerRef.current;
+        if (svgContainer) {
+          const secondsPerMeasure = parseFloat(svgContainer.dataset.secondsPerMeasure || '0');
+          const measurePositions = measurePositionsRef.current;
+
+          if (secondsPerMeasure > 0 && measurePositions.length > 0) {
+            // Find current measure index
+            const currentMeasure = Math.floor(currentTime / secondsPerMeasure);
+            const fractionInMeasure = (currentTime % secondsPerMeasure) / secondsPerMeasure;
+
+            // Find the measure position
+            const measurePos = measurePositions.find(m => m.measureIndex === currentMeasure);
+            if (measurePos) {
+              // Calculate x position within the measure
+              const xPos = measurePos.x + fractionInMeasure * measurePos.width;
+              progressLine.style.left = `${xPos}px`;
+              progressLine.style.top = `${measurePos.y}px`;
+              progressLine.style.height = `${measurePos.height}px`;
+              progressLine.style.display = 'block';
+            } else {
+              progressLine.style.display = 'none';
+            }
+          } else {
+            progressLine.style.display = 'none';
+          }
+        }
+      }
+
       // Auto-scroll based on current measure (not note Y position)
       if (!isUserScrolling.current) {
         const svgContainer = svgContainerRef.current;
@@ -1270,6 +1302,7 @@ export function SheetMusic({
     >
       <div ref={svgContainerRef} className={styles.svgContainer}>
         <div ref={highlightsRef} className={styles.highlights} />
+        <div ref={progressLineRef} className={styles.progressLine} />
         {/* Scroll snap points for each line */}
         {snapPoints.map((y, i) => (
           <div key={`snap-${i}`} className={styles.snapPoint} style={{ top: y }} />

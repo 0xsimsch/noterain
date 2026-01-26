@@ -82,3 +82,13 @@
   pointer-events: none;
   z-index: 5;
 }
+
+.progressLine {
+  position: absolute;
+  width: 2px;
+  background: var(--ctp-red);
+  opacity: 0.8;
+  z-index: 15;
+  pointer-events: none;
+  box-shadow: 0 0 8px var(--ctp-red);
+}
