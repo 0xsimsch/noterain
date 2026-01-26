@@ -377,20 +377,6 @@ function groupNotesIntoMeasures(
   return measures;
 }
 
-/** Convert hex color to VexFlow color format with optional alpha */
-function hexToRgba(hex: string, alpha: number = 1): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (result) {
-    const r = parseInt(result[1], 16);
-    const g = parseInt(result[2], 16);
-    const b = parseInt(result[3], 16);
-    return alpha < 1
-      ? `rgba(${r}, ${g}, ${b}, ${alpha})`
-      : `rgb(${r}, ${g}, ${b})`;
-  }
-  return hex;
-}
-
 /** Stored position info for a rendered note */
 interface NotePosition {
   x: number;
@@ -458,7 +444,7 @@ function normalizeTimeSignature(
   const validDenominators = [1, 2, 4, 8];
   if (!validDenominators.includes(normDenom)) {
     normDenom = validDenominators.reduce((prev, curr) =>
-      Math.abs(curr - normDenom) < Math.abs(prev - normDenom) ? curr : prev
+      Math.abs(curr - normDenom) < Math.abs(prev - normDenom) ? curr : prev,
     );
   }
 
@@ -565,7 +551,9 @@ function createVoicesForMeasure(
         const restDurations = generateRests(gap);
         for (const restDur of restDurations) {
           try {
-            const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
+            const ghostNote = new GhostNote({
+              duration: restDur.replace('r', ''),
+            });
             staveNotes.push(ghostNote);
           } catch {
             // Skip notes that can't be created
@@ -625,7 +613,9 @@ function createVoicesForMeasure(
         const restDurations = generateRests(gap);
         for (const restDur of restDurations) {
           try {
-            const ghostNote = new GhostNote({ duration: restDur.replace('r', '') });
+            const ghostNote = new GhostNote({
+              duration: restDur.replace('r', ''),
+            });
             staveNotes.push(ghostNote);
           } catch {
             // Skip notes that can't be created
@@ -666,10 +656,20 @@ export function SheetMusic({
   const scrollTimeout = useRef<number | undefined>(undefined);
 
   // Store line layout info for scroll-to-seek calculation
-  const linesRef = useRef<{ measureIndices: number[]; cumulativeMeasures: number }[]>([]);
+  const linesRef = useRef<
+    { measureIndices: number[]; cumulativeMeasures: number }[]
+  >([]);
 
   // Store measure positions for click-to-set-loop detection
-  const measurePositionsRef = useRef<{ measureIndex: number; x: number; y: number; width: number; height: number }[]>([]);
+  const measurePositionsRef = useRef<
+    {
+      measureIndex: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }[]
+  >([]);
 
   // Subscribe to current file and theme for re-rendering
   const currentFileId = useMidiStore((state) => state.currentFileId);
@@ -678,7 +678,9 @@ export function SheetMusic({
   const theme = useMidiStore((state) => state.settings.theme);
   const seek = useMidiStore((state) => state.seek);
   const loopEnabled = useMidiStore((state) => state.playback.loopEnabled);
-  const loopStartMeasure = useMidiStore((state) => state.playback.loopStartMeasure);
+  const loopStartMeasure = useMidiStore(
+    (state) => state.playback.loopStartMeasure,
+  );
   const loopEndMeasure = useMidiStore((state) => state.playback.loopEndMeasure);
   const isPlaying = useMidiStore((state) => state.playback.isPlaying);
 
@@ -715,13 +717,17 @@ export function SheetMusic({
     const bpm = currentFile.tempos.length > 0 ? currentFile.tempos[0].bpm : 120;
 
     // Get time signature from file, normalize unusual denominators
-    const rawTimeSignature = currentFile.timeSignature ?? { numerator: 4, denominator: 4 };
+    const rawTimeSignature = currentFile.timeSignature ?? {
+      numerator: 4,
+      denominator: 4,
+    };
     const normalizedTimeSignature = normalizeTimeSignature(
       rawTimeSignature.numerator,
       rawTimeSignature.denominator,
     );
     // Allow prop override for beats per measure, otherwise use file's time signature
-    const beatsPerMeasure = beatsPerMeasureProp ?? normalizedTimeSignature.numerator;
+    const beatsPerMeasure =
+      beatsPerMeasureProp ?? normalizedTimeSignature.numerator;
     const beatValue = normalizedTimeSignature.denominator;
 
     // Get key signature from file, or detect from notes if not present
@@ -756,7 +762,7 @@ export function SheetMusic({
 
     // Layout constants
     const totalAvailableWidth = 1200;
-    const leftMargin = 10;
+    const leftMargin = 20;
     const singleStaveHeight = 80;
     const trackSpacing = 20;
     const topMargin = 40;
@@ -788,16 +794,22 @@ export function SheetMusic({
       }
     }
     // ============ LAYOUT: Group measures into lines ============
-    const availableWidth = totalAvailableWidth - leftMargin * 2 - clefKeyTimeWidth;
+    const availableWidth =
+      totalAvailableWidth - leftMargin * 2 - clefKeyTimeWidth;
     // Calculate base measures per line, then add extra to compress spacing
-    const baseMeasuresPerLine = Math.floor(availableWidth / (maxMinWidth + measurePadding));
+    const baseMeasuresPerLine = Math.floor(
+      availableWidth / (maxMinWidth + measurePadding),
+    );
     const extraMeasures = 2; // Add extra measures per line to compress notes
     const measuresPerLine = Math.max(1, baseMeasuresPerLine + extraMeasures);
 
     const lines: number[][] = [];
     for (let i = 0; i < measureCount; i += measuresPerLine) {
       lines.push(
-        Array.from({ length: Math.min(measuresPerLine, measureCount - i) }, (_, j) => i + j)
+        Array.from(
+          { length: Math.min(measuresPerLine, measureCount - i) },
+          (_, j) => i + j,
+        ),
       );
     }
 
@@ -810,7 +822,8 @@ export function SheetMusic({
     });
 
     // Height for one "system" (all tracks for one set of measures)
-    const systemHeight = enabledTracks.length * singleStaveHeight + trackSpacing;
+    const systemHeight =
+      enabledTracks.length * singleStaveHeight + trackSpacing;
     const lineCount = lines.length;
     const totalHeight = lineCount * systemHeight + topMargin * 2;
 
@@ -822,15 +835,23 @@ export function SheetMusic({
     const context = renderer.getContext();
     context.setFont('Arial', 10);
 
-    // Set theme-aware colors for notation elements
-    const textColor = theme === 'latte' ? '#4c4f69' : '#cdd6f4';
-    const staffColor = theme === 'latte' ? '#5c5f77' : '#a6adc8';
-    context.setFillStyle(textColor);
-    context.setStrokeStyle(staffColor);
+    // Set theme-aware colors for notation elements (matching NotesOverlay exactly)
+    const isDark = theme === 'mocha';
+    const noteColor = isDark ? '#cdd6f4' : '#4c4f69';
+    const staveColor = isDark ? '#6c7086' : '#9ca0b0';
+    // Set context defaults for clef rendering
+    context.setStrokeStyle(staveColor);
+    context.setFillStyle(staveColor);
 
     // Collect note positions for highlighting
     const notePositions: NotePosition[] = [];
-    const measurePositions: { measureIndex: number; x: number; y: number; width: number; height: number }[] = [];
+    const measurePositions: {
+      measureIndex: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }[] = [];
     const secondsPerQuarterNote = 60 / bpm;
 
     // ============ SECOND PASS: Render each line with uniform measure widths ============
@@ -851,7 +872,9 @@ export function SheetMusic({
         const isFirstInLine = posInLine === 0;
 
         // All measures get equal width, first one gets extra space for clef/key/time
-        const staveWidth = isFirstInLine ? baseStaveWidth + clefKeyTimeWidth : baseStaveWidth;
+        const staveWidth = isFirstInLine
+          ? baseStaveWidth + clefKeyTimeWidth
+          : baseStaveWidth;
 
         // Store measure position for click detection
         measurePositions.push({
@@ -868,7 +891,11 @@ export function SheetMusic({
           voice: Voice;
           stave: Stave;
           staveNotes: (StaveNote | GhostNote)[];
-          noteTimings: { startTime: number; endTime: number; staveNoteIndex: number }[];
+          noteTimings: {
+            startTime: number;
+            endTime: number;
+            staveNoteIndex: number;
+          }[];
         }[] = [];
 
         // Build unified beat grid for this measure
@@ -877,7 +904,8 @@ export function SheetMusic({
           const measure = measures[measureIndex];
           if (!measure || measure.notes.length === 0) return;
           for (const note of measure.notes) {
-            const quarterBeatInMeasure = (note.startTime - measure.startTime) / secondsPerQuarterNote;
+            const quarterBeatInMeasure =
+              (note.startTime - measure.startTime) / secondsPerQuarterNote;
             const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
             const beatKey = Math.round(quantizedBeat * 1000);
             if (beatKey / 1000 < quarterNotesPerMeasure) {
@@ -893,7 +921,8 @@ export function SheetMusic({
           const measure = measures[measureIndex];
           if (!measure || measure.notes.length === 0) return;
           for (const note of measure.notes) {
-            const quarterBeatInMeasure = (note.startTime - measure.startTime) / secondsPerQuarterNote;
+            const quarterBeatInMeasure =
+              (note.startTime - measure.startTime) / secondsPerQuarterNote;
             const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
             const beatKey = Math.round(quantizedBeat * 1000);
             if (!beatDurations.has(beatKey)) {
@@ -903,7 +932,7 @@ export function SheetMusic({
         });
 
         // Create staves and voices for each track
-        trackMeasures.forEach(({ track, measures, clef }, trackIndex) => {
+        trackMeasures.forEach(({ measures, clef }, trackIndex) => {
           const y = baseY + trackIndex * singleStaveHeight;
           const measure = measures[measureIndex];
 
@@ -916,6 +945,7 @@ export function SheetMusic({
               stave.addTimeSignature(`${beatsPerMeasure}/${beatValue}`);
             }
           }
+          stave.setStyle({ strokeStyle: staveColor, fillStyle: staveColor });
           stave.setContext(context);
           staves.push(stave);
 
@@ -923,7 +953,8 @@ export function SheetMusic({
           const noteGroups: Map<number, MidiNote[]> = new Map();
           if (measure && measure.notes.length > 0) {
             for (const note of measure.notes) {
-              const quarterBeatInMeasure = (note.startTime - measure.startTime) / secondsPerQuarterNote;
+              const quarterBeatInMeasure =
+                (note.startTime - measure.startTime) / secondsPerQuarterNote;
               const quantizedBeat = Math.round(quarterBeatInMeasure * 8) / 8;
               const beatKey = Math.round(quantizedBeat * 1000);
               if (!noteGroups.has(beatKey)) noteGroups.set(beatKey, []);
@@ -935,9 +966,11 @@ export function SheetMusic({
 
           // Create VexFlow notes
           const staveNotes: (StaveNote | GhostNote)[] = [];
-          const noteTimings: { startTime: number; endTime: number; staveNoteIndex: number }[] = [];
-          const isRenderOnly = !track.enabled && track.renderOnly;
-          const trackColor = hexToRgba(track.color, isRenderOnly ? 0.35 : 1);
+          const noteTimings: {
+            startTime: number;
+            endTime: number;
+            staveNoteIndex: number;
+          }[] = [];
           let currentBeat = 0;
 
           for (const beatKey of unifiedBeatGrid) {
@@ -949,8 +982,12 @@ export function SheetMusic({
             if (gap >= 0.125) {
               for (const restDur of generateRests(gap)) {
                 try {
-                  staveNotes.push(new GhostNote({ duration: restDur.replace('r', '') }));
-                } catch { /* skip */ }
+                  staveNotes.push(
+                    new GhostNote({ duration: restDur.replace('r', '') }),
+                  );
+                } catch {
+                  /* skip */
+                }
               }
             }
 
@@ -959,21 +996,37 @@ export function SheetMusic({
               const keys: string[] = [];
               const accidentals: (string | undefined)[] = [];
               for (const note of notes) {
-                const { key, accidental } = midiToVexFlow(note.noteNumber, keyNum);
+                const { key, accidental } = midiToVexFlow(
+                  note.noteNumber,
+                  keyNum,
+                );
                 keys.push(key);
                 accidentals.push(accidental);
               }
 
               const remainingInMeasure = quarterNotesPerMeasure - noteBeat;
               const rawDuration = getDuration(notes[0].duration, bpm);
-              const clampedBeats = Math.min(durationToBeats(rawDuration), remainingInMeasure);
+              const clampedBeats = Math.min(
+                durationToBeats(rawDuration),
+                remainingInMeasure,
+              );
               const duration = beatsToDuration(clampedBeats);
               const maxDuration = Math.max(...notes.map((n) => n.duration));
 
               try {
-                const staveNote = new StaveNote({ keys, duration, clef, autoStem: true });
-                staveNote.setStyle({ fillStyle: trackColor, strokeStyle: trackColor });
-                accidentals.forEach((acc, i) => { if (acc) staveNote.addModifier(new Accidental(acc), i); });
+                const staveNote = new StaveNote({
+                  keys,
+                  duration,
+                  clef,
+                  autoStem: true,
+                });
+                staveNote.setStyle({
+                  fillStyle: noteColor,
+                  strokeStyle: noteColor,
+                });
+                accidentals.forEach((acc, i) => {
+                  if (acc) staveNote.addModifier(new Accidental(acc), i);
+                });
                 staveNotes.push(staveNote);
                 noteTimings.push({
                   startTime: notes[0].startTime,
@@ -981,13 +1034,17 @@ export function SheetMusic({
                   staveNoteIndex: staveNotes.length - 1,
                 });
                 currentBeat = noteBeat + durationToBeats(duration);
-              } catch { /* skip */ }
+              } catch {
+                /* skip */
+              }
             } else {
               const ghostDuration = beatDurations.get(beatKey) || '8';
               try {
                 staveNotes.push(new GhostNote({ duration: ghostDuration }));
                 currentBeat = noteBeat + durationToBeats(ghostDuration);
-              } catch { /* skip */ }
+              } catch {
+                /* skip */
+              }
             }
           }
 
@@ -997,15 +1054,22 @@ export function SheetMusic({
             if (gap >= 0.125) {
               for (const restDur of generateRests(gap)) {
                 try {
-                  staveNotes.push(new GhostNote({ duration: restDur.replace('r', '') }));
-                } catch { /* skip */ }
+                  staveNotes.push(
+                    new GhostNote({ duration: restDur.replace('r', '') }),
+                  );
+                } catch {
+                  /* skip */
+                }
               }
             }
           }
 
           if (staveNotes.length === 0) return;
 
-          const voice = new Voice({ numBeats: beatsPerMeasure, beatValue }).setStrict(false);
+          const voice = new Voice({
+            numBeats: beatsPerMeasure,
+            beatValue,
+          }).setStrict(false);
           voice.addTickables(staveNotes);
           voices.push(voice);
           voiceData.push({ voice, stave, staveNotes, noteTimings });
@@ -1030,10 +1094,19 @@ export function SheetMusic({
             formatter.format(voices, Math.max(usableWidth, 20));
 
             voiceData.forEach(({ voice, stave, staveNotes, noteTimings }) => {
-              const beamGroups = getBeamGroupsForTimeSignature(beatsPerMeasure, beatValue);
-              const beams = Beam.generateBeams(staveNotes, { groups: beamGroups, maintainStemDirections: true });
+              const beamGroups = getBeamGroupsForTimeSignature(
+                beatsPerMeasure,
+                beatValue,
+              );
+              const beams = Beam.generateBeams(staveNotes, {
+                groups: beamGroups,
+                maintainStemDirections: true,
+              });
               voice.draw(context, stave);
-              beams.forEach((beam) => beam.setContext(context).draw());
+              beams.forEach((beam) => {
+                beam.setStyle({ fillStyle: noteColor, strokeStyle: noteColor });
+                beam.setContext(context).draw();
+              });
 
               noteTimings.forEach((timing) => {
                 try {
@@ -1042,34 +1115,67 @@ export function SheetMusic({
                   const bb = staveNote.getBoundingBox();
                   if (bb) {
                     notePositions.push({
-                      x: noteX, y: bb.getY(), width: 20, height: bb.getH(),
-                      startTime: timing.startTime, endTime: timing.endTime,
+                      x: noteX,
+                      y: bb.getY(),
+                      width: 20,
+                      height: bb.getH(),
+                      startTime: timing.startTime,
+                      endTime: timing.endTime,
                     });
                   }
-                } catch { /* ignore */ }
+                } catch {
+                  /* ignore */
+                }
               });
             });
-          } catch { /* ignore formatting errors */ }
+          } catch {
+            /* ignore formatting errors */
+          }
         }
 
         // Draw connectors
         if (isFirstInLine && staves.length > 1) {
           try {
-            const connector = new StaveConnector(staves[0], staves[staves.length - 1]);
+            const connector = new StaveConnector(
+              staves[0],
+              staves[staves.length - 1],
+            );
             connector.setType('brace');
+            connector.setStyle({
+              strokeStyle: staveColor,
+              fillStyle: staveColor,
+            });
             connector.setContext(context).draw();
-            const lineConnector = new StaveConnector(staves[0], staves[staves.length - 1]);
+            const lineConnector = new StaveConnector(
+              staves[0],
+              staves[staves.length - 1],
+            );
             lineConnector.setType('singleLeft');
+            lineConnector.setStyle({
+              strokeStyle: staveColor,
+              fillStyle: staveColor,
+            });
             lineConnector.setContext(context).draw();
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
 
         if (staves.length > 1) {
           try {
-            const endConnector = new StaveConnector(staves[0], staves[staves.length - 1]);
+            const endConnector = new StaveConnector(
+              staves[0],
+              staves[staves.length - 1],
+            );
             endConnector.setType('singleRight');
+            endConnector.setStyle({
+              strokeStyle: staveColor,
+              fillStyle: staveColor,
+            });
             endConnector.setContext(context).draw();
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
 
         x += staveWidth;
@@ -1114,14 +1220,19 @@ export function SheetMusic({
     // Get layout info from dataset
     const systemHeight = parseFloat(svgContainer.dataset.systemHeight || '0');
     const topMargin = parseFloat(svgContainer.dataset.topMargin || '0');
-    const secondsPerMeasure = parseFloat(svgContainer.dataset.secondsPerMeasure || '0');
+    const secondsPerMeasure = parseFloat(
+      svgContainer.dataset.secondsPerMeasure || '0',
+    );
 
     if (systemHeight === 0 || secondsPerMeasure === 0) return;
 
     const scrollTop = container.scrollTop;
 
     // Calculate which line is at the scroll position
-    const lineIndex = Math.max(0, Math.floor((scrollTop - topMargin + systemHeight / 2) / systemHeight));
+    const lineIndex = Math.max(
+      0,
+      Math.floor((scrollTop - topMargin + systemHeight / 2) / systemHeight),
+    );
 
     // Get measure info from linesRef
     const lines = linesRef.current;
@@ -1186,16 +1297,21 @@ export function SheetMusic({
       if (progressLine) {
         const svgContainer = svgContainerRef.current;
         if (svgContainer) {
-          const secondsPerMeasure = parseFloat(svgContainer.dataset.secondsPerMeasure || '0');
+          const secondsPerMeasure = parseFloat(
+            svgContainer.dataset.secondsPerMeasure || '0',
+          );
           const measurePositions = measurePositionsRef.current;
 
           if (secondsPerMeasure > 0 && measurePositions.length > 0) {
             // Find current measure index
             const currentMeasure = Math.floor(currentTime / secondsPerMeasure);
-            const fractionInMeasure = (currentTime % secondsPerMeasure) / secondsPerMeasure;
+            const fractionInMeasure =
+              (currentTime % secondsPerMeasure) / secondsPerMeasure;
 
             // Find the measure position
-            const measurePos = measurePositions.find(m => m.measureIndex === currentMeasure);
+            const measurePos = measurePositions.find(
+              (m) => m.measureIndex === currentMeasure,
+            );
             if (measurePos) {
               // Calculate x position within the measure
               const xPos = measurePos.x + fractionInMeasure * measurePos.width;
@@ -1216,9 +1332,13 @@ export function SheetMusic({
       if (!isUserScrolling.current) {
         const svgContainer = svgContainerRef.current;
         if (svgContainer) {
-          const systemHeight = parseFloat(svgContainer.dataset.systemHeight || '0');
+          const systemHeight = parseFloat(
+            svgContainer.dataset.systemHeight || '0',
+          );
           const topMargin = parseFloat(svgContainer.dataset.topMargin || '0');
-          const secondsPerMeasure = parseFloat(svgContainer.dataset.secondsPerMeasure || '0');
+          const secondsPerMeasure = parseFloat(
+            svgContainer.dataset.secondsPerMeasure || '0',
+          );
 
           if (systemHeight > 0 && secondsPerMeasure > 0) {
             // Calculate current measure from time
@@ -1233,7 +1353,11 @@ export function SheetMusic({
                 break;
               }
               // If measure is past this line's measures, keep looking
-              if (i < lines.length - 1 && currentMeasure > lines[i].measureIndices[lines[i].measureIndices.length - 1]) {
+              if (
+                i < lines.length - 1 &&
+                currentMeasure >
+                  lines[i].measureIndices[lines[i].measureIndices.length - 1]
+              ) {
                 lineIndex = i + 1;
               }
             }
@@ -1263,14 +1387,24 @@ export function SheetMusic({
 
   // Calculate loop overlay positions
   const loopOverlays = useMemo(() => {
-    if (!loopEnabled || loopStartMeasure === null || loopEndMeasure === null) return [];
+    if (!loopEnabled || loopStartMeasure === null || loopEndMeasure === null)
+      return [];
 
-    const overlays: { x: number; y: number; width: number; height: number }[] = [];
+    const overlays: { x: number; y: number; width: number; height: number }[] =
+      [];
     const measurePositions = measurePositionsRef.current;
 
     for (const pos of measurePositions) {
-      if (pos.measureIndex >= loopStartMeasure && pos.measureIndex <= loopEndMeasure) {
-        overlays.push({ x: pos.x, y: pos.y, width: pos.width, height: pos.height });
+      if (
+        pos.measureIndex >= loopStartMeasure &&
+        pos.measureIndex <= loopEndMeasure
+      ) {
+        overlays.push({
+          x: pos.x,
+          y: pos.y,
+          width: pos.width,
+          height: pos.height,
+        });
       }
     }
     return overlays;
@@ -1298,14 +1432,20 @@ export function SheetMusic({
     <div
       ref={containerRef}
       className={styles.container}
-      style={isPlaying ? { overflow: 'hidden', scrollSnapType: 'none' } : undefined}
+      style={
+        isPlaying ? { overflow: 'hidden', scrollSnapType: 'none' } : undefined
+      }
     >
       <div ref={svgContainerRef} className={styles.svgContainer}>
         <div ref={highlightsRef} className={styles.highlights} />
         <div ref={progressLineRef} className={styles.progressLine} />
         {/* Scroll snap points for each line */}
         {snapPoints.map((y, i) => (
-          <div key={`snap-${i}`} className={styles.snapPoint} style={{ top: y }} />
+          <div
+            key={`snap-${i}`}
+            className={styles.snapPoint}
+            style={{ top: y }}
+          />
         ))}
         {/* Loop range overlay */}
         {loopOverlays.map((overlay, i) => (
