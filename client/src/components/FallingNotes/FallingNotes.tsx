@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { Application, Graphics, Container, Text, TextStyle } from 'pixi.js';
+import { Application, Graphics, Container, Text, TextStyle, NineSliceSprite, Texture } from 'pixi.js';
 import { useMidiStore, createSortedNotesIndex, getVisibleNotesFast } from '../../stores/midiStore';
 import {
   PIANO_MIN_NOTE,
@@ -8,6 +8,7 @@ import {
   getPitchColor,
   NOTE_NAMES,
   MidiTrack,
+  MidiNote,
 } from '../../types/midi';
 
 interface FallingNotesProps {
@@ -74,6 +75,17 @@ function getTextStyles(theme: string): { main: TextStyle; accidental: TextStyle 
   return TEXT_STYLE_CACHE[theme];
 }
 
+/** Cache for parsed hex colors */
+const _colorParseCache = new Map<string, number>();
+
+function parseColor(hex: string): number {
+  let cached = _colorParseCache.get(hex);
+  if (cached !== undefined) return cached;
+  cached = parseInt(hex.replace('#', ''), 16);
+  _colorParseCache.set(hex, cached);
+  return cached;
+}
+
 /** Draw vertical grid lines for each piano key */
 function drawGrid(
   app: Application,
@@ -125,6 +137,29 @@ function drawGrid(
   }
 }
 
+/** Corner radius for note rounded rects (in pixels, preserved by 9-slice) */
+const NOTE_CORNER_RADIUS = 4;
+/** Texture size — must be at least 2 * NOTE_CORNER_RADIUS */
+const NOTE_TEX_SIZE = 16;
+
+/** Generate a white rounded-rect texture for 9-slice note sprites */
+function createNoteTexture(app: Application): Texture {
+  const g = new Graphics();
+  g.roundRect(0, 0, NOTE_TEX_SIZE, NOTE_TEX_SIZE, NOTE_CORNER_RADIUS);
+  g.fill({ color: 0xffffff });
+  const texture = app.renderer.generateTexture(g);
+  g.destroy();
+  return texture;
+}
+
+interface NoteObj {
+  sprite: NineSliceSprite;
+  glowSprite: NineSliceSprite;
+  text: Text;
+  accidentalText: Text | null;
+  noteNumber: number;
+}
+
 export function FallingNotes({
   lookahead = 3,
   minNote = PIANO_MIN_NOTE,
@@ -133,10 +168,21 @@ export function FallingNotes({
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const notesContainerRef = useRef<Container | null>(null);
+  const glowContainerRef = useRef<Container | null>(null);
   const gridGraphicsRef = useRef<Graphics | null>(null);
-  const noteGraphicsRef = useRef<Map<string, { graphics: Graphics; text: Text; accidentalText: Text | null }>>(new Map());
+  const noteObjectsRef = useRef<Map<MidiNote, NoteObj>>(new Map());
+  const noteTextureRef = useRef<Texture | null>(null);
   const renderNotesRef = useRef<() => void>(() => {});
   const [isReady, setIsReady] = useState(false);
+
+  // Object pools
+  const spritePoolRef = useRef<NineSliceSprite[]>([]);
+  const glowSpritePoolRef = useRef<NineSliceSprite[]>([]);
+  const textPoolRef = useRef<Text[]>([]);
+  const accTextPoolRef = useRef<Text[]>([]);
+
+  // Persistent set for tracking visible notes (cleared each frame, not reallocated)
+  const visibleNotesSetRef = useRef<Set<MidiNote>>(new Set());
 
   const { settings } = useMidiStore();
 
@@ -200,13 +246,108 @@ export function FallingNotes({
     trackMapRef.current = trackMap;
   }, [currentFile]);
 
+  // Pool helpers
+  const acquireSprite = useCallback((texture: Texture, parent: Container): NineSliceSprite => {
+    const pool = spritePoolRef.current;
+    let sprite: NineSliceSprite;
+    if (pool.length > 0) {
+      sprite = pool.pop()!;
+      sprite.texture = texture;
+      sprite.visible = true;
+    } else {
+      sprite = new NineSliceSprite({
+        texture,
+        leftWidth: NOTE_CORNER_RADIUS,
+        rightWidth: NOTE_CORNER_RADIUS,
+        topHeight: NOTE_CORNER_RADIUS,
+        bottomHeight: NOTE_CORNER_RADIUS,
+      });
+    }
+    parent.addChild(sprite);
+    return sprite;
+  }, []);
+
+  const acquireGlowSprite = useCallback((texture: Texture, parent: Container): NineSliceSprite => {
+    const pool = glowSpritePoolRef.current;
+    let sprite: NineSliceSprite;
+    if (pool.length > 0) {
+      sprite = pool.pop()!;
+      sprite.texture = texture;
+      sprite.visible = true;
+    } else {
+      sprite = new NineSliceSprite({
+        texture,
+        leftWidth: NOTE_CORNER_RADIUS,
+        rightWidth: NOTE_CORNER_RADIUS,
+        topHeight: NOTE_CORNER_RADIUS,
+        bottomHeight: NOTE_CORNER_RADIUS,
+      });
+    }
+    parent.addChild(sprite);
+    return sprite;
+  }, []);
+
+  const acquireText = useCallback((content: string, style: TextStyle, parent: Container): Text => {
+    const pool = textPoolRef.current;
+    let text: Text;
+    if (pool.length > 0) {
+      text = pool.pop()!;
+      text.text = content;
+      text.style = style;
+      text.visible = true;
+    } else {
+      text = new Text({ text: content, style });
+      text.anchor.set(0.5, 0);
+    }
+    parent.addChild(text);
+    return text;
+  }, []);
+
+  const acquireAccText = useCallback((content: string, style: TextStyle, parent: Container): Text => {
+    const pool = accTextPoolRef.current;
+    let text: Text;
+    if (pool.length > 0) {
+      text = pool.pop()!;
+      text.text = content;
+      text.style = style;
+      text.visible = true;
+    } else {
+      text = new Text({ text: content, style });
+      text.anchor.set(0.5, 0);
+    }
+    parent.addChild(text);
+    return text;
+  }, []);
+
+  const releaseNoteObj = useCallback((noteObj: NoteObj) => {
+    const notesContainer = notesContainerRef.current;
+    const glowContainer = glowContainerRef.current;
+
+    noteObj.sprite.visible = false;
+    notesContainer?.removeChild(noteObj.sprite);
+    spritePoolRef.current.push(noteObj.sprite);
+
+    noteObj.glowSprite.visible = false;
+    glowContainer?.removeChild(noteObj.glowSprite);
+    glowSpritePoolRef.current.push(noteObj.glowSprite);
+
+    noteObj.text.visible = false;
+    notesContainer?.removeChild(noteObj.text);
+    textPoolRef.current.push(noteObj.text);
+
+    if (noteObj.accidentalText) {
+      noteObj.accidentalText.visible = false;
+      notesContainer?.removeChild(noteObj.accidentalText);
+      accTextPoolRef.current.push(noteObj.accidentalText);
+    }
+  }, []);
+
   // Initialize PixiJS
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Capture refs at effect start for cleanup
-    const noteGraphics = noteGraphicsRef.current;
+    const noteObjects = noteObjectsRef.current;
     let destroyed = false;
     const app = new Application();
 
@@ -239,12 +380,20 @@ export function FallingNotes({
         container.appendChild(app.canvas);
         appRef.current = app;
 
+        // Create note texture (one white rounded rect, tinted per sprite)
+        noteTextureRef.current = createNoteTexture(app);
+
         // Create grid graphics (behind notes)
         const gridGraphics = new Graphics();
         app.stage.addChild(gridGraphics);
         gridGraphicsRef.current = gridGraphics;
 
-        // Create notes container
+        // Create glow container (behind notes, above grid)
+        const glowContainer = new Container();
+        app.stage.addChild(glowContainer);
+        glowContainerRef.current = glowContainer;
+
+        // Create notes container (above glow)
         const notesContainer = new Container();
         app.stage.addChild(notesContainer);
         notesContainerRef.current = notesContainer;
@@ -264,14 +413,31 @@ export function FallingNotes({
       destroyed = true;
       setIsReady(false);
 
-      // Clear note graphics
-      for (const { graphics, text, accidentalText } of noteGraphics.values()) {
-        graphics.destroy();
-        text.destroy();
-        accidentalText?.destroy();
+      // Release all note objects
+      for (const noteObj of noteObjects.values()) {
+        noteObj.sprite.destroy();
+        noteObj.glowSprite.destroy();
+        noteObj.text.destroy();
+        noteObj.accidentalText?.destroy();
       }
-      noteGraphics.clear();
+      noteObjects.clear();
+
+      // Destroy pooled objects
+      for (const s of spritePoolRef.current) s.destroy();
+      for (const s of glowSpritePoolRef.current) s.destroy();
+      for (const t of textPoolRef.current) t.destroy();
+      for (const t of accTextPoolRef.current) t.destroy();
+      spritePoolRef.current.length = 0;
+      glowSpritePoolRef.current.length = 0;
+      textPoolRef.current.length = 0;
+      accTextPoolRef.current.length = 0;
+
+      // Destroy texture
+      noteTextureRef.current?.destroy(true);
+      noteTextureRef.current = null;
+
       notesContainerRef.current = null;
+      glowContainerRef.current = null;
 
       // Destroy app if it was initialized
       if (appRef.current) {
@@ -289,10 +455,11 @@ export function FallingNotes({
   const renderNotes = useCallback(() => {
     const app = appRef.current;
     const notesContainer = notesContainerRef.current;
+    const glowContainer = glowContainerRef.current;
+    const noteTexture = noteTextureRef.current;
     const file = getCurrentFile();
 
-    if (!app || !notesContainer || !file) {
-      // Debug log only occasionally to avoid spam
+    if (!app || !notesContainer || !glowContainer || !noteTexture || !file) {
       return;
     }
 
@@ -313,8 +480,9 @@ export function FallingNotes({
       enabledTracksRef.current
     );
 
-    // Track which notes are still visible
-    const visibleNoteKeys = new Set<string>();
+    // Reuse persistent Set (clear instead of allocating new)
+    const visibleNoteKeys = visibleNotesSetRef.current;
+    visibleNoteKeys.clear();
 
     // Pixels per second (how fast notes fall)
     const pixelsPerSecond = canvasHeight / lookahead;
@@ -323,60 +491,51 @@ export function FallingNotes({
     const textStyles = getTextStyles(settings.theme);
 
     for (const note of visibleNotes) {
-      const noteKey = `${note.track}-${note.noteNumber}-${note.startTime}`;
-      visibleNoteKeys.add(noteKey);
+      // Use MidiNote object reference as key (stable identity from sorted index)
+      visibleNoteKeys.add(note);
 
-      // Get or create graphics and text for this note
-      let noteObj = noteGraphicsRef.current.get(noteKey);
+      // Get or create sprite objects for this note
+      let noteObj = noteObjectsRef.current.get(note);
       if (!noteObj) {
-        const graphics = new Graphics();
         const noteName = NOTE_NAMES[note.noteNumber % 12];
-        const letter = noteName[0]; // Just the letter (C, D, E, etc.)
-        const accidental = noteName.length > 1 ? noteName.slice(1) : null; // # or b if present
+        const letter = noteName[0];
+        const accidental = noteName.length > 1 ? noteName.slice(1) : null;
 
-        // Use cached TextStyle
-        const text = new Text({ text: letter, style: textStyles.main });
-        text.anchor.set(0.5, 0);
-        notesContainer.addChild(graphics);
-        notesContainer.addChild(text);
+        const sprite = acquireSprite(noteTexture, notesContainer);
+        const glowSprite = acquireGlowSprite(noteTexture, glowContainer);
+        const text = acquireText(letter, textStyles.main, notesContainer);
 
-        // Create accidental text if needed
         let accidentalText: Text | null = null;
         if (accidental) {
-          accidentalText = new Text({ text: accidental, style: textStyles.accidental });
-          accidentalText.anchor.set(0.5, 0);
-          notesContainer.addChild(accidentalText);
+          accidentalText = acquireAccText(accidental, textStyles.accidental, notesContainer);
         }
 
-        noteObj = { graphics, text, accidentalText };
-        noteGraphicsRef.current.set(noteKey, noteObj);
+        noteObj = { sprite, glowSprite, text, accidentalText, noteNumber: note.noteNumber };
+        noteObjectsRef.current.set(note, noteObj);
       }
 
-      const { graphics, text, accidentalText } = noteObj;
+      const { sprite, glowSprite, text, accidentalText } = noteObj;
 
       // Calculate position
       const pos = notePositionsRef.current.get(note.noteNumber);
-      // Skip notes outside the visible range
       if (!pos) continue;
       const x = pos.x * width;
       const w = pos.width * width - 2; // Small gap between notes
 
       // Y position: notes fall from top (future) to bottom (current time)
       const timeUntilNote = note.startTime - currentTime;
-      const y =
-        canvasHeight - (timeUntilNote + note.duration) * pixelsPerSecond;
-      const h = note.duration * pixelsPerSecond;
+      const y = canvasHeight - (timeUntilNote + note.duration) * pixelsPerSecond;
+      const h = Math.max(note.duration * pixelsPerSecond, 4);
 
       // Get track info for color and render-only state (O(1) lookup)
       const track = trackMapRef.current.get(note.track);
       const isRenderOnly = track ? !track.enabled && track.renderOnly : false;
 
-      // Get color based on color mode
+      // Get color based on color mode (with cached parsing)
       let color: string;
       if (settings.noteColorMode === 'pitch') {
         color = getPitchColor(note.noteNumber);
       } else {
-        // Track mode: use track color or hand-based fallback
         color =
           track?.color ||
           (note.noteNumber < 60
@@ -384,8 +543,7 @@ export function FallingNotes({
             : settings.rightHandColor);
       }
 
-      // Convert hex color to number
-      const colorNum = parseInt(color.replace('#', ''), 16);
+      const colorNum = parseColor(color);
 
       // Check if note is currently active (being played)
       const isActive =
@@ -395,24 +553,31 @@ export function FallingNotes({
       // Reduce opacity for render-only tracks
       const baseAlpha = isRenderOnly ? 0.35 : isActive ? 1 : 0.85;
 
-      // Draw the note
-      graphics.clear();
-      graphics
-        .roundRect(x + 1, y, w, Math.max(h, 4), 4)
-        .fill({ color: colorNum, alpha: baseAlpha });
+      // Update sprite position, size, tint, and alpha (no GPU geometry rebuild)
+      sprite.x = x + 1;
+      sprite.y = y;
+      sprite.width = w;
+      sprite.height = h;
+      sprite.tint = colorNum;
+      sprite.alpha = baseAlpha;
 
-      // Add glow effect for active notes (but not for render-only)
+      // Glow effect for active notes (rendered in separate container behind notes)
       if (isActive && !isRenderOnly) {
-        graphics
-          .roundRect(x - 1, y - 2, w + 4, h + 4, 6)
-          .fill({ color: colorNum, alpha: 0.3 });
+        glowSprite.visible = true;
+        glowSprite.x = x - 1;
+        glowSprite.y = y - 2;
+        glowSprite.width = w + 4;
+        glowSprite.height = h + 4;
+        glowSprite.tint = colorNum;
+        glowSprite.alpha = 0.3;
+      } else {
+        glowSprite.visible = false;
       }
 
       // Position the text label at bottom of note
       text.x = x + 1 + w / 2;
       text.y = y + h - (accidentalText ? 24 : 16);
       text.alpha = baseAlpha;
-      // Only show text if note is tall enough
       text.visible = h > (accidentalText ? 30 : 20);
 
       // Position accidental underneath the letter
@@ -424,28 +589,24 @@ export function FallingNotes({
       }
     }
 
-    // Remove notes that are no longer visible
-    for (const [key, noteObj] of noteGraphicsRef.current) {
-      if (!visibleNoteKeys.has(key)) {
-        notesContainer.removeChild(noteObj.graphics);
-        notesContainer.removeChild(noteObj.text);
-        if (noteObj.accidentalText) {
-          notesContainer.removeChild(noteObj.accidentalText);
-          noteObj.accidentalText.destroy();
-        }
-        noteObj.graphics.destroy();
-        noteObj.text.destroy();
-        noteGraphicsRef.current.delete(key);
+    // Pool notes that are no longer visible instead of destroying
+    for (const [noteRef, noteObj] of noteObjectsRef.current) {
+      if (!visibleNoteKeys.has(noteRef)) {
+        releaseNoteObj(noteObj);
+        noteObjectsRef.current.delete(noteRef);
       }
     }
-    // Note: getCurrentFile and playback.currentTime are read via getState()
-    // to avoid recreating this callback and to always get fresh data
   }, [
     lookahead,
     settings.leftHandColor,
     settings.rightHandColor,
     settings.noteColorMode,
     settings.theme,
+    acquireSprite,
+    acquireGlowSprite,
+    acquireText,
+    acquireAccText,
+    releaseNoteObj,
   ]);
 
   // Keep ref updated with latest renderNotes
@@ -499,7 +660,6 @@ export function FallingNotes({
   useEffect(() => {
     const app = appRef.current;
     const gridGraphics = gridGraphicsRef.current;
-    const notesContainer = notesContainerRef.current;
     if (!app || !isReady) return;
 
     const bgColor = settings.theme === 'latte' ? 0xf5f2ed : 0x1e2127;
@@ -510,27 +670,17 @@ export function FallingNotes({
       drawGrid(app, gridGraphics, settings.theme, minNoteRef.current, maxNoteRef.current, notePositionsRef.current);
     }
 
-    // Clear cached notes so they get recreated with new theme colors
-    if (notesContainer) {
-      for (const noteObj of noteGraphicsRef.current.values()) {
-        notesContainer.removeChild(noteObj.graphics);
-        notesContainer.removeChild(noteObj.text);
-        if (noteObj.accidentalText) {
-          notesContainer.removeChild(noteObj.accidentalText);
-          noteObj.accidentalText.destroy();
-        }
-        noteObj.graphics.destroy();
-        noteObj.text.destroy();
-      }
-      noteGraphicsRef.current.clear();
+    // Clear cached notes so they get recreated with new theme text styles
+    for (const noteObj of noteObjectsRef.current.values()) {
+      releaseNoteObj(noteObj);
     }
-  }, [settings.theme, isReady]);
+    noteObjectsRef.current.clear();
+  }, [settings.theme, isReady, releaseNoteObj]);
 
   // Redraw grid and clear notes when note range changes
   useEffect(() => {
     const app = appRef.current;
     const gridGraphics = gridGraphicsRef.current;
-    const notesContainer = notesContainerRef.current;
     if (!app || !isReady) return;
 
     // Redraw grid with new range
@@ -540,20 +690,11 @@ export function FallingNotes({
     }
 
     // Clear cached notes so they get recreated with new positions
-    if (notesContainer) {
-      for (const noteObj of noteGraphicsRef.current.values()) {
-        notesContainer.removeChild(noteObj.graphics);
-        notesContainer.removeChild(noteObj.text);
-        if (noteObj.accidentalText) {
-          notesContainer.removeChild(noteObj.accidentalText);
-          noteObj.accidentalText.destroy();
-        }
-        noteObj.graphics.destroy();
-        noteObj.text.destroy();
-      }
-      noteGraphicsRef.current.clear();
+    for (const noteObj of noteObjectsRef.current.values()) {
+      releaseNoteObj(noteObj);
     }
-  }, [minNote, maxNote, notePositions, isReady]);
+    noteObjectsRef.current.clear();
+  }, [minNote, maxNote, notePositions, isReady, releaseNoteObj]);
 
   // Wheel-to-seek: scroll wheel changes playback position
   const handleWheel = useCallback(

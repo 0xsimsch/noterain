@@ -594,6 +594,9 @@ function binarySearchByStartTime(notes: MidiNote[], targetTime: number): number 
   return low;
 }
 
+/** Reusable buffer for getVisibleNotesFast to avoid per-frame allocation */
+const _visibleNotesBuffer: MidiNote[] = [];
+
 /** Get visible notes using binary search - O(log n + k) where k = notes in time window */
 export function getVisibleNotesFast(
   sortedNotes: MidiNote[],
@@ -602,9 +605,9 @@ export function getVisibleNotesFast(
   lookahead: number,
   enabledTracks: Set<number>,
 ): MidiNote[] {
-  if (sortedNotes.length === 0) return [];
+  if (sortedNotes.length === 0) return _visibleNotesBuffer.length = 0, _visibleNotesBuffer;
 
-  const result: MidiNote[] = [];
+  _visibleNotesBuffer.length = 0;
   const windowStart = currentTime - maxDuration; // Notes that started this long ago might still be playing
   const windowEnd = currentTime + lookahead;
 
@@ -619,11 +622,11 @@ export function getVisibleNotesFast(
     // Check if note is still visible (hasn't ended yet)
     const noteEnd = note.startTime + note.duration;
     if (noteEnd >= currentTime && enabledTracks.has(note.track)) {
-      result.push(note);
+      _visibleNotesBuffer.push(note);
     }
   }
 
-  return result;
+  return _visibleNotesBuffer;
 }
 
 /** Get notes that are currently playing */
