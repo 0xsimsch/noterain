@@ -162,15 +162,17 @@ export function NotesOverlay() {
   const trebleRef = useRef<HTMLDivElement>(null);
   const bassRef = useRef<HTMLDivElement>(null);
 
-  const { liveNotes, playback, settings } = useMidiStore();
+  const liveNotes = useMidiStore((s) => s.liveNotes);
+  const activeNotes = useMidiStore((s) => s.playback.activeNotes);
+  const settings = useMidiStore((s) => s.settings);
 
   // Combine live notes with active playback notes
   const allNotes = useMemo(() => {
     const combined = new Set<number>();
     liveNotes.forEach((n) => combined.add(n));
-    playback.activeNotes.forEach((n) => combined.add(n));
+    activeNotes.forEach((n) => combined.add(n));
     return [...combined].sort((a, b) => a - b);
-  }, [liveNotes, playback.activeNotes]);
+  }, [liveNotes, activeNotes]);
 
   // Detect chord
   const chord = useMemo(() => detectChord(allNotes), [allNotes]);

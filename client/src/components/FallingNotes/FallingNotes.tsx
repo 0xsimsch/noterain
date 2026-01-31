@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { Application, Graphics, Container, Text, TextStyle, NineSliceSprite, Texture } from 'pixi.js';
+import { Application, Graphics, Container, Text, TextStyle, BitmapFont, BitmapText, NineSliceSprite, Texture } from 'pixi.js';
 import { useMidiStore, createSortedNotesIndex, getVisibleNotesFast } from '../../stores/midiStore';
 import {
   PIANO_MIN_NOTE,
@@ -49,30 +49,6 @@ function computeNotePositions(
   }
 
   return positions;
-}
-
-/** Cached TextStyle objects to avoid recreation */
-const TEXT_STYLE_CACHE: Record<string, { main: TextStyle; accidental: TextStyle }> = {};
-
-function getTextStyles(theme: string): { main: TextStyle; accidental: TextStyle } {
-  if (!TEXT_STYLE_CACHE[theme]) {
-    const textColor = theme === 'latte' ? '#1e1e2e' : '#cdd6f4';
-    TEXT_STYLE_CACHE[theme] = {
-      main: new TextStyle({
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        fontSize: 12,
-        fontWeight: 'bold',
-        fill: textColor,
-      }),
-      accidental: new TextStyle({
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        fontSize: 9,
-        fontWeight: 'bold',
-        fill: textColor,
-      }),
-    };
-  }
-  return TEXT_STYLE_CACHE[theme];
 }
 
 /** Cache for parsed hex colors */
@@ -152,13 +128,24 @@ function createNoteTexture(app: Application): Texture {
   return texture;
 }
 
+/** Bitmap font names installed at init */
+const BITMAP_FONT_MAIN = 'noteLabel';
+const BITMAP_FONT_ACC = 'noteLabelAcc';
+
 interface NoteObj {
   sprite: NineSliceSprite;
   glowSprite: NineSliceSprite;
-  text: Text;
-  accidentalText: Text | null;
+  text: BitmapText;
+  accidentalText: BitmapText | null;
   noteNumber: number;
+  /** Cached X position (0-1 range) */
+  posX: number;
+  /** Cached width (0-1 range) */
+  posW: number;
 }
+
+/** Reusable array for collecting notes to remove (avoids Map delete-during-iteration) */
+const _removeBuffer: MidiNote[] = [];
 
 export function FallingNotes({
   lookahead = 3,
@@ -172,14 +159,16 @@ export function FallingNotes({
   const gridGraphicsRef = useRef<Graphics | null>(null);
   const noteObjectsRef = useRef<Map<MidiNote, NoteObj>>(new Map());
   const noteTextureRef = useRef<Texture | null>(null);
+  const fpsTextRef = useRef<Text | null>(null);
+  const lastRenderedTimeRef = useRef<number | null>(null);
   const renderNotesRef = useRef<() => void>(() => {});
   const [isReady, setIsReady] = useState(false);
 
   // Object pools
   const spritePoolRef = useRef<NineSliceSprite[]>([]);
   const glowSpritePoolRef = useRef<NineSliceSprite[]>([]);
-  const textPoolRef = useRef<Text[]>([]);
-  const accTextPoolRef = useRef<Text[]>([]);
+  const textPoolRef = useRef<BitmapText[]>([]);
+  const accTextPoolRef = useRef<BitmapText[]>([]);
 
   // Persistent set for tracking visible notes (cleared each frame, not reallocated)
   const visibleNotesSetRef = useRef<Set<MidiNote>>(new Set());
@@ -204,17 +193,14 @@ export function FallingNotes({
   const currentFileId = useMidiStore((state) => state.currentFileId);
   const files = useMidiStore((state) => state.files);
 
-  // Use getState() to read values inside animation loop without causing re-renders
-  const getPlaybackTime = () => useMidiStore.getState().playback.currentTime;
-  const getCurrentFile = () => {
-    const state = useMidiStore.getState();
-    return state.files.find((f) => f.id === state.currentFileId) || null;
-  };
+  // Cache current file in a ref so the render loop doesn't call files.find() every frame
+  const currentFileRef = useRef<ReturnType<typeof useMidiStore.getState>['files'][number] | null>(null);
 
   // Memoize current file
   const currentFile = useMemo(() => {
     return files.find((f) => f.id === currentFileId) || null;
   }, [files, currentFileId]);
+  currentFileRef.current = currentFile;
 
   // Build sorted notes index once when file/tracks change (for binary search)
   const sortedNotesRef = useRef<{ notes: ReturnType<typeof createSortedNotesIndex>['notes']; maxDuration: number }>({ notes: [], maxDuration: 0 });
@@ -262,8 +248,8 @@ export function FallingNotes({
         topHeight: NOTE_CORNER_RADIUS,
         bottomHeight: NOTE_CORNER_RADIUS,
       });
+      parent.addChild(sprite);
     }
-    parent.addChild(sprite);
     return sprite;
   }, []);
 
@@ -282,62 +268,59 @@ export function FallingNotes({
         topHeight: NOTE_CORNER_RADIUS,
         bottomHeight: NOTE_CORNER_RADIUS,
       });
+      parent.addChild(sprite);
     }
-    parent.addChild(sprite);
     return sprite;
   }, []);
 
-  const acquireText = useCallback((content: string, style: TextStyle, parent: Container): Text => {
+  const acquireText = useCallback((content: string, parent: Container): BitmapText => {
     const pool = textPoolRef.current;
-    let text: Text;
+    let text: BitmapText;
     if (pool.length > 0) {
       text = pool.pop()!;
       text.text = content;
-      text.style = style;
       text.visible = true;
     } else {
-      text = new Text({ text: content, style });
+      text = new BitmapText({
+        text: content,
+        style: { fontFamily: BITMAP_FONT_MAIN, fontSize: 12 },
+      });
       text.anchor.set(0.5, 0);
+      parent.addChild(text);
     }
-    parent.addChild(text);
     return text;
   }, []);
 
-  const acquireAccText = useCallback((content: string, style: TextStyle, parent: Container): Text => {
+  const acquireAccText = useCallback((content: string, parent: Container): BitmapText => {
     const pool = accTextPoolRef.current;
-    let text: Text;
+    let text: BitmapText;
     if (pool.length > 0) {
       text = pool.pop()!;
       text.text = content;
-      text.style = style;
       text.visible = true;
     } else {
-      text = new Text({ text: content, style });
+      text = new BitmapText({
+        text: content,
+        style: { fontFamily: BITMAP_FONT_ACC, fontSize: 9 },
+      });
       text.anchor.set(0.5, 0);
+      parent.addChild(text);
     }
-    parent.addChild(text);
     return text;
   }, []);
 
   const releaseNoteObj = useCallback((noteObj: NoteObj) => {
-    const notesContainer = notesContainerRef.current;
-    const glowContainer = glowContainerRef.current;
-
     noteObj.sprite.visible = false;
-    notesContainer?.removeChild(noteObj.sprite);
     spritePoolRef.current.push(noteObj.sprite);
 
     noteObj.glowSprite.visible = false;
-    glowContainer?.removeChild(noteObj.glowSprite);
     glowSpritePoolRef.current.push(noteObj.glowSprite);
 
     noteObj.text.visible = false;
-    notesContainer?.removeChild(noteObj.text);
     textPoolRef.current.push(noteObj.text);
 
     if (noteObj.accidentalText) {
       noteObj.accidentalText.visible = false;
-      notesContainer?.removeChild(noteObj.accidentalText);
       accTextPoolRef.current.push(noteObj.accidentalText);
     }
   }, []);
@@ -359,8 +342,8 @@ export function FallingNotes({
 
         await app.init({
           backgroundColor: bgColor,
-          antialias: true,
-          resolution: window.devicePixelRatio || 1,
+          antialias: false,
+          resolution: Math.min(window.devicePixelRatio || 1, 1.5),
           autoDensity: true,
           width: container.clientWidth,
           height: container.clientHeight,
@@ -390,16 +373,71 @@ export function FallingNotes({
 
         // Create glow container (behind notes, above grid)
         const glowContainer = new Container();
+        glowContainer.cullable = true;
         app.stage.addChild(glowContainer);
         glowContainerRef.current = glowContainer;
 
         // Create notes container (above glow)
         const notesContainer = new Container();
+        notesContainer.cullable = true;
         app.stage.addChild(notesContainer);
         notesContainerRef.current = notesContainer;
 
+        // Install bitmap fonts for note labels
+        const textColor = theme === 'latte' ? '#1e1e2e' : '#cdd6f4';
+        BitmapFont.install({
+          name: BITMAP_FONT_MAIN,
+          style: {
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: 12,
+            fontWeight: 'bold',
+            fill: textColor,
+          },
+          chars: [['A', 'G'], '#b'],
+        });
+        BitmapFont.install({
+          name: BITMAP_FONT_ACC,
+          style: {
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: 9,
+            fontWeight: 'bold',
+            fill: textColor,
+          },
+          chars: '#b♯♭',
+        });
+
         // Draw initial grid
         drawGrid(app, gridGraphics, theme, minNoteRef.current, maxNoteRef.current, notePositionsRef.current);
+
+        // Cap frame rate at 60 FPS
+        app.ticker.maxFPS = 60;
+
+        // FPS counter (top-right)
+        const fpsText = new Text({
+          text: 'FPS: --',
+          style: new TextStyle({
+            fontFamily: 'monospace',
+            fontSize: 12,
+            fill: theme === 'latte' ? '#4c4f69' : '#a6adc8',
+          }),
+        });
+        fpsText.x = app.screen.width - 70;
+        fpsText.y = 8;
+        fpsText.alpha = 0.7;
+        app.stage.addChild(fpsText);
+        fpsTextRef.current = fpsText;
+
+        // Update FPS text every ~500ms
+        let fpsElapsed = 0;
+        app.ticker.add((ticker) => {
+          fpsElapsed += ticker.deltaMS;
+          if (fpsElapsed >= 500) {
+            fpsElapsed = 0;
+            if (fpsTextRef.current) {
+              fpsTextRef.current.text = `FPS: ${app.ticker.FPS.toFixed(0)}`;
+            }
+          }
+        });
 
         setIsReady(true);
       } catch (err) {
@@ -436,6 +474,7 @@ export function FallingNotes({
       noteTextureRef.current?.destroy(true);
       noteTextureRef.current = null;
 
+      fpsTextRef.current = null;
       notesContainerRef.current = null;
       glowContainerRef.current = null;
 
@@ -457,7 +496,7 @@ export function FallingNotes({
     const notesContainer = notesContainerRef.current;
     const glowContainer = glowContainerRef.current;
     const noteTexture = noteTextureRef.current;
-    const file = getCurrentFile();
+    const file = currentFileRef.current;
 
     if (!app || !notesContainer || !glowContainer || !noteTexture || !file) {
       return;
@@ -468,8 +507,15 @@ export function FallingNotes({
       return;
     }
 
-    // Read currentTime directly from store to avoid dependency on playback.currentTime
-    const currentTime = getPlaybackTime();
+    // Single store read per frame
+    const playback = useMidiStore.getState().playback;
+    const currentTime = playback.currentTime;
+
+    // Skip render when paused and nothing changed
+    if (!playback.isPlaying && lastRenderedTimeRef.current === currentTime) {
+      return;
+    }
+    lastRenderedTimeRef.current = currentTime;
 
     // Get visible notes using binary search (O(log n + k) instead of O(n))
     const visibleNotes = getVisibleNotesFast(
@@ -487,9 +533,6 @@ export function FallingNotes({
     // Pixels per second (how fast notes fall)
     const pixelsPerSecond = canvasHeight / lookahead;
 
-    // Get cached text styles
-    const textStyles = getTextStyles(settings.theme);
-
     for (const note of visibleNotes) {
       // Use MidiNote object reference as key (stable identity from sorted index)
       visibleNoteKeys.add(note);
@@ -501,26 +544,27 @@ export function FallingNotes({
         const letter = noteName[0];
         const accidental = noteName.length > 1 ? noteName.slice(1) : null;
 
+        const pos = notePositionsRef.current.get(note.noteNumber);
+        if (!pos) continue;
+
         const sprite = acquireSprite(noteTexture, notesContainer);
         const glowSprite = acquireGlowSprite(noteTexture, glowContainer);
-        const text = acquireText(letter, textStyles.main, notesContainer);
+        const text = acquireText(letter, notesContainer);
 
-        let accidentalText: Text | null = null;
+        let accidentalText: BitmapText | null = null;
         if (accidental) {
-          accidentalText = acquireAccText(accidental, textStyles.accidental, notesContainer);
+          accidentalText = acquireAccText(accidental, notesContainer);
         }
 
-        noteObj = { sprite, glowSprite, text, accidentalText, noteNumber: note.noteNumber };
+        noteObj = { sprite, glowSprite, text, accidentalText, noteNumber: note.noteNumber, posX: pos.x, posW: pos.width };
         noteObjectsRef.current.set(note, noteObj);
       }
 
-      const { sprite, glowSprite, text, accidentalText } = noteObj;
+      const { sprite, glowSprite, text, accidentalText, posX, posW } = noteObj;
 
-      // Calculate position
-      const pos = notePositionsRef.current.get(note.noteNumber);
-      if (!pos) continue;
-      const x = pos.x * width;
-      const w = pos.width * width - 2; // Small gap between notes
+      // Use cached position data (no Map lookup per note per frame)
+      const x = posX * width;
+      const w = posW * width - 2; // Small gap between notes
 
       // Y position: notes fall from top (future) to bottom (current time)
       const timeUntilNote = note.startTime - currentTime;
@@ -589,19 +633,22 @@ export function FallingNotes({
       }
     }
 
-    // Pool notes that are no longer visible instead of destroying
+    // Pool notes that are no longer visible (collect first, then delete to avoid deopt)
+    _removeBuffer.length = 0;
     for (const [noteRef, noteObj] of noteObjectsRef.current) {
       if (!visibleNoteKeys.has(noteRef)) {
         releaseNoteObj(noteObj);
-        noteObjectsRef.current.delete(noteRef);
+        _removeBuffer.push(noteRef);
       }
+    }
+    for (let i = 0; i < _removeBuffer.length; i++) {
+      noteObjectsRef.current.delete(_removeBuffer[i]);
     }
   }, [
     lookahead,
     settings.leftHandColor,
     settings.rightHandColor,
     settings.noteColorMode,
-    settings.theme,
     acquireSprite,
     acquireGlowSprite,
     acquireText,
@@ -649,6 +696,12 @@ export function FallingNotes({
           const theme = useMidiStore.getState().settings.theme;
           drawGrid(app, gridGraphics, theme, minNoteRef.current, maxNoteRef.current, notePositionsRef.current);
         }
+        // Reposition FPS counter
+        if (fpsTextRef.current) {
+          fpsTextRef.current.x = app.screen.width - 70;
+        }
+        // Force re-render after resize
+        lastRenderedTimeRef.current = null;
       }
     };
 
@@ -670,11 +723,42 @@ export function FallingNotes({
       drawGrid(app, gridGraphics, settings.theme, minNoteRef.current, maxNoteRef.current, notePositionsRef.current);
     }
 
+    // Reinstall bitmap fonts with new theme colors
+    const textColor = settings.theme === 'latte' ? '#1e1e2e' : '#cdd6f4';
+    BitmapFont.install({
+      name: BITMAP_FONT_MAIN,
+      style: {
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: 12,
+        fontWeight: 'bold',
+        fill: textColor,
+      },
+      chars: [['A', 'G'], '#b'],
+    });
+    BitmapFont.install({
+      name: BITMAP_FONT_ACC,
+      style: {
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: 9,
+        fontWeight: 'bold',
+        fill: textColor,
+      },
+      chars: '#b♯♭',
+    });
+
+    // Update FPS counter style
+    if (fpsTextRef.current) {
+      fpsTextRef.current.style.fill = settings.theme === 'latte' ? '#4c4f69' : '#a6adc8';
+    }
+
     // Clear cached notes so they get recreated with new theme text styles
     for (const noteObj of noteObjectsRef.current.values()) {
       releaseNoteObj(noteObj);
     }
     noteObjectsRef.current.clear();
+
+    // Force re-render
+    lastRenderedTimeRef.current = null;
   }, [settings.theme, isReady, releaseNoteObj]);
 
   // Redraw grid and clear notes when note range changes
@@ -694,6 +778,9 @@ export function FallingNotes({
       releaseNoteObj(noteObj);
     }
     noteObjectsRef.current.clear();
+
+    // Force re-render
+    lastRenderedTimeRef.current = null;
   }, [minNote, maxNote, notePositions, isReady, releaseNoteObj]);
 
   // Wheel-to-seek: scroll wheel changes playback position
@@ -702,7 +789,7 @@ export function FallingNotes({
       e.preventDefault();
 
       const container = containerRef.current;
-      const file = getCurrentFile();
+      const file = currentFileRef.current;
       if (!container || !file) return;
 
       const canvasHeight = container.clientHeight || 600;
@@ -712,7 +799,7 @@ export function FallingNotes({
       // Positive deltaY (scroll down) = move forward in time
       const timeDelta = e.deltaY / pixelsPerSecond;
 
-      const currentTime = getPlaybackTime();
+      const currentTime = useMidiStore.getState().playback.currentTime;
       const newTime = Math.max(0, Math.min(currentTime + timeDelta, file.duration));
 
       seek(newTime);

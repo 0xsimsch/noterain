@@ -59,7 +59,9 @@ export function PianoKeyboard({
   minNote = PIANO_MIN_NOTE,
   maxNote = PIANO_MAX_NOTE,
 }: PianoKeyboardProps) {
-  const { playback, liveNotes, settings } = useMidiStore();
+  const playbackActiveNotes = useMidiStore((s) => s.playback.activeNotes);
+  const liveNotes = useMidiStore((s) => s.liveNotes);
+  const settings = useMidiStore((s) => s.settings);
 
   // Combine playback active notes and live notes
   const activeNotes = useMemo(() => {
@@ -67,10 +69,10 @@ export function PianoKeyboard({
     if (propActiveNotes) {
       propActiveNotes.forEach((n) => combined.add(n));
     }
-    playback.activeNotes.forEach((n) => combined.add(n));
+    playbackActiveNotes.forEach((n) => combined.add(n));
     liveNotes.forEach((n) => combined.add(n));
     return combined;
-  }, [propActiveNotes, playback.activeNotes, liveNotes]);
+  }, [propActiveNotes, playbackActiveNotes, liveNotes]);
 
   // Generate keys with positions
   const keys = useMemo(() => {

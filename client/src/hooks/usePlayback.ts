@@ -1,27 +1,35 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useMidiStore, getActiveNotesAtTime, getMeasureTime } from '../stores/midiStore';
+import { useMidiStore, getMeasureTime, createSortedNotesIndex } from '../stores/midiStore';
 import { useAudioEngine } from './useAudioEngine';
+import { MidiNote } from '../types/midi';
 
 /** Hook for MIDI playback control */
 export function usePlayback() {
-  const {
-    playback,
-    play,
-    pause,
-    stop,
-    seek,
-    setSpeed,
-    toggleWaitMode,
-    setActiveNotes,
-    getCurrentFile,
-    buildWaitModeNoteList,
-    resetWaitModeState,
-    advanceWaitModeReached,
-    hasUnsatisfiedWaitNotes,
-    setLoopRange,
-    toggleLoop,
-    clearLoop,
-  } = useMidiStore();
+  // Use selective subscriptions to avoid re-rendering on every seek() call
+  const isPlaying = useMidiStore((s) => s.playback.isPlaying);
+  const currentTime = useMidiStore((s) => s.playback.currentTime);
+  const speed = useMidiStore((s) => s.playback.speed);
+  const waitMode = useMidiStore((s) => s.playback.waitMode);
+  const activeNotes = useMidiStore((s) => s.playback.activeNotes);
+  const loopEnabled = useMidiStore((s) => s.playback.loopEnabled);
+  const loopStartMeasure = useMidiStore((s) => s.playback.loopStartMeasure);
+  const loopEndMeasure = useMidiStore((s) => s.playback.loopEndMeasure);
+
+  const play = useMidiStore((s) => s.play);
+  const pause = useMidiStore((s) => s.pause);
+  const stop = useMidiStore((s) => s.stop);
+  const seek = useMidiStore((s) => s.seek);
+  const setSpeed = useMidiStore((s) => s.setSpeed);
+  const toggleWaitMode = useMidiStore((s) => s.toggleWaitMode);
+  const setActiveNotes = useMidiStore((s) => s.setActiveNotes);
+  const getCurrentFile = useMidiStore((s) => s.getCurrentFile);
+  const buildWaitModeNoteList = useMidiStore((s) => s.buildWaitModeNoteList);
+  const resetWaitModeState = useMidiStore((s) => s.resetWaitModeState);
+  const advanceWaitModeReached = useMidiStore((s) => s.advanceWaitModeReached);
+  const hasUnsatisfiedWaitNotes = useMidiStore((s) => s.hasUnsatisfiedWaitNotes);
+  const setLoopRange = useMidiStore((s) => s.setLoopRange);
+  const toggleLoop = useMidiStore((s) => s.toggleLoop);
+  const clearLoop = useMidiStore((s) => s.clearLoop);
 
   const { playNote, stopAll, resumeAudio } = useAudioEngine();
 
@@ -30,12 +38,20 @@ export function usePlayback() {
   const scheduledNotesRef = useRef<Set<string>>(new Set());
   // Track current playback time in ref to avoid stale closure in tick()
   const currentTimeRef = useRef<number>(0);
+  // Sorted notes index + cursor for O(log n) note scheduling
+  const sortedNotesRef = useRef<{ notes: MidiNote[]; maxDuration: number }>({ notes: [], maxDuration: 0 });
+  const scheduleCursorRef = useRef<number>(0);
+  // Track previous activeNotes to avoid unnecessary store writes
+  const prevActiveNotesRef = useRef<Set<number>>(new Set());
+  // Track map for O(1) lookups inside tick (rebuilt when file changes)
+  const trackMapRef = useRef<Map<number, { enabled: boolean; playAudio: boolean }>>(new Map());
+  const fileIdRef = useRef<string | null>(null);
 
   // Main playback loop
   useEffect(() => {
-    console.log('[Playback] Effect triggered, isPlaying:', playback.isPlaying);
+    console.log('[Playback] Effect triggered, isPlaying:', isPlaying);
 
-    if (!playback.isPlaying) {
+    if (!isPlaying) {
       console.log('[Playback] Not playing, cleaning up animation frame');
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -59,16 +75,48 @@ export function usePlayback() {
     // Initialize currentTimeRef from store
     currentTimeRef.current = useMidiStore.getState().playback.currentTime;
 
+    // Build sorted notes index for O(log n) scheduling
+    sortedNotesRef.current = createSortedNotesIndex(initialFile);
+    fileIdRef.current = initialFile.id;
+    // Build track map for O(1) lookups
+    const tMap = new Map<number, { enabled: boolean; playAudio: boolean }>();
+    for (const t of initialFile.tracks) tMap.set(t.index, { enabled: t.enabled, playAudio: t.playAudio });
+    trackMapRef.current = tMap;
+    // Set cursor to first note at or after current time
+    const sortedNotes = sortedNotesRef.current.notes;
+    let cursor = 0;
+    const startTime = currentTimeRef.current;
+    while (cursor < sortedNotes.length && sortedNotes[cursor].startTime <= startTime) {
+      cursor++;
+    }
+    scheduleCursorRef.current = cursor;
+
     // Build the sorted note list for wait mode (index-based tracking)
     buildWaitModeNoteList();
 
     const tick = () => {
-      // Read fresh file data each tick to pick up track enabled changes
       const state = useMidiStore.getState();
       const file = state.files.find((f) => f.id === state.currentFileId);
       if (!file) {
         stop();
         return;
+      }
+
+      // Rebuild track map if file changed (rare — track enable/disable)
+      if (file.id !== fileIdRef.current) {
+        fileIdRef.current = file.id;
+        sortedNotesRef.current = createSortedNotesIndex(file);
+      }
+      // Refresh track enabled/playAudio flags (cheap — just overwrite values)
+      const tMap = trackMapRef.current;
+      for (const t of file.tracks) {
+        const existing = tMap.get(t.index);
+        if (existing) {
+          existing.enabled = t.enabled;
+          existing.playAudio = t.playAudio;
+        } else {
+          tMap.set(t.index, { enabled: t.enabled, playAudio: t.playAudio });
+        }
       }
 
       const now = performance.now();
@@ -81,6 +129,15 @@ export function usePlayback() {
         currentTimeRef.current = storeTime;
         scheduledNotesRef.current.clear(); // Clear scheduled notes on seek
         resetWaitModeState(storeTime); // Reset wait mode cursor and satisfaction
+        // Reset scheduling cursor via binary search
+        const sn = sortedNotesRef.current.notes;
+        let lo = 0, hi = sn.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >>> 1;
+          if (sn[mid].startTime <= storeTime) lo = mid + 1;
+          else hi = mid;
+        }
+        scheduleCursorRef.current = lo;
       }
 
       // Calculate new time using ref (not stale closure)
@@ -102,21 +159,54 @@ export function usePlayback() {
           currentTimeRef.current = loopStartTime;
           scheduledNotesRef.current.clear(); // Prevent double-playing
           resetWaitModeState(loopStartTime); // Reset wait mode on loop
+          // Reset scheduling cursor via binary search
+          const sn = sortedNotesRef.current.notes;
+          let lo = 0, hi = sn.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (sn[mid].startTime <= loopStartTime) lo = mid + 1;
+            else hi = mid;
+          }
+          scheduleCursorRef.current = lo;
           seek(loopStartTime);
           animationFrameRef.current = requestAnimationFrame(tick);
           return;
         }
       }
 
-      // Check if we've reached the end
+      // Loop back to start when reaching the end
       if (newTime >= file.duration) {
-        stop();
+        newTime = 0;
+        currentTimeRef.current = 0;
+        scheduledNotesRef.current.clear();
+        resetWaitModeState(0);
+        // Reset scheduling cursor to beginning
+        scheduleCursorRef.current = 0;
+        prevActiveNotesRef.current = new Set();
+        seek(0);
+        animationFrameRef.current = requestAnimationFrame(tick);
         return;
       }
 
-      // Get notes that should be playing now (respects track.enabled)
-      const activeNotes = getActiveNotesAtTime(file, newTime);
-      const activeNoteNumbers = new Set(activeNotes.map((n) => n.noteNumber));
+      // Build active notes set from sorted index using binary scan (O(k) where k = visible notes)
+      const activeNoteNumbers = new Set<number>();
+      const sNotes = sortedNotesRef.current.notes;
+      const maxDur = sortedNotesRef.current.maxDuration;
+      // Only scan notes that could possibly be active (started within maxDuration ago)
+      const scanStart = newTime - maxDur;
+      // Find scan start with a quick backward walk from cursor (usually very close)
+      let scanIdx = Math.min(scheduleCursorRef.current, sNotes.length - 1);
+      while (scanIdx > 0 && sNotes[scanIdx].startTime > scanStart) scanIdx--;
+      for (let i = scanIdx; i < sNotes.length; i++) {
+        const n = sNotes[i];
+        if (n.startTime > newTime) break;
+        if (n.startTime + n.duration > newTime) {
+          const tInfo = tMap.get(n.track);
+          if (tInfo?.enabled) {
+            activeNoteNumbers.add(n.noteNumber);
+          }
+        }
+      }
 
       // Wait mode: index-based tracking - no timing issues!
       if (state.playback.waitMode) {
@@ -133,32 +223,24 @@ export function usePlayback() {
         }
       }
 
-      // Find newly started notes (only play audio for tracks with playAudio enabled)
-      for (const track of file.tracks) {
-        if (!track.playAudio) continue;
-
-        for (const note of track.notes) {
-          const noteKey = `${note.track}-${note.noteNumber}-${note.startTime}`;
-
-          // Note just started
-          if (
-            note.startTime > prevTime &&
-            note.startTime <= newTime &&
-            !scheduledNotesRef.current.has(noteKey)
-          ) {
-            scheduledNotesRef.current.add(noteKey);
-            playNote(note.noteNumber, note.velocity, note.duration);
-          }
-
-          // Clean up old notes from tracking
-          if (note.startTime + note.duration < newTime) {
-            scheduledNotesRef.current.delete(noteKey);
-          }
+      // Advance cursor to schedule newly started notes (O(k) where k = new notes this frame)
+      while (scheduleCursorRef.current < sNotes.length) {
+        const note = sNotes[scheduleCursorRef.current];
+        if (note.startTime > newTime) break; // No more notes to schedule yet
+        // Schedule audio for this note if its track has playAudio enabled
+        const tInfo = tMap.get(note.track);
+        if (tInfo?.playAudio) {
+          playNote(note.noteNumber, note.velocity, note.duration);
         }
+        scheduleCursorRef.current++;
       }
 
-      // Update state
-      setActiveNotes(activeNoteNumbers);
+      // Only update activeNotes in store if the set actually changed
+      const prev = prevActiveNotesRef.current;
+      if (activeNoteNumbers.size !== prev.size || [...activeNoteNumbers].some((n) => !prev.has(n))) {
+        prevActiveNotesRef.current = activeNoteNumbers;
+        setActiveNotes(activeNoteNumbers);
+      }
       seek(newTime);
 
       animationFrameRef.current = requestAnimationFrame(tick);
@@ -174,7 +256,7 @@ export function usePlayback() {
     // Note: playback.currentTime and playback.speed are intentionally excluded -
     // they're read via useMidiStore.getState() inside tick() to avoid stale closures
   }, [
-    playback.isPlaying,
+    isPlaying,
     getCurrentFile,
     pause,
     stop,
@@ -189,10 +271,10 @@ export function usePlayback() {
 
   // Reset scheduled notes when stopping
   useEffect(() => {
-    if (!playback.isPlaying) {
+    if (!isPlaying) {
       scheduledNotesRef.current.clear();
     }
-  }, [playback.isPlaying]);
+  }, [isPlaying]);
 
   // Pause playback when window/tab loses focus or becomes hidden
   useEffect(() => {
@@ -228,11 +310,11 @@ export function usePlayback() {
   const togglePlay = useCallback(async () => {
     console.log(
       '[Playback] togglePlay called, current isPlaying:',
-      playback.isPlaying,
+      isPlaying,
     );
     await resumeAudio();
 
-    if (playback.isPlaying) {
+    if (isPlaying) {
       console.log('[Playback] Pausing playback');
       stopAll();
       pause();
@@ -240,7 +322,7 @@ export function usePlayback() {
       console.log('[Playback] Starting playback');
       play();
     }
-  }, [playback.isPlaying, play, pause, stopAll, resumeAudio]);
+  }, [isPlaying, play, pause, stopAll, resumeAudio]);
 
   /** Stop playback and reset */
   const handleStop = useCallback(() => {
@@ -263,18 +345,18 @@ export function usePlayback() {
   const getProgress = useCallback(() => {
     const file = getCurrentFile();
     if (!file || file.duration === 0) return 0;
-    return playback.currentTime / file.duration;
-  }, [getCurrentFile, playback.currentTime]);
+    return useMidiStore.getState().playback.currentTime / file.duration;
+  }, [getCurrentFile]);
 
   return {
-    isPlaying: playback.isPlaying,
-    currentTime: playback.currentTime,
-    speed: playback.speed,
-    waitMode: playback.waitMode,
-    activeNotes: playback.activeNotes,
-    loopEnabled: playback.loopEnabled,
-    loopStartMeasure: playback.loopStartMeasure,
-    loopEndMeasure: playback.loopEndMeasure,
+    isPlaying,
+    currentTime,
+    speed,
+    waitMode,
+    activeNotes,
+    loopEnabled,
+    loopStartMeasure,
+    loopEndMeasure,
     togglePlay,
     stop: handleStop,
     seek,
