@@ -12,6 +12,7 @@ import { AppService } from './app.service';
       serveRoot: '/samples',
       serveStaticOptions: {
         index: false,
+        maxAge: 31536000000, // 1 year in ms
       },
     }),
     // Serve main app

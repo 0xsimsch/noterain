@@ -17,7 +17,11 @@ import {
 import { usePlayback } from '../../hooks/usePlayback';
 import { useMidiFile } from '../../hooks/useMidiFile';
 import { useMidiInput } from '../../hooks/useMidiInput';
-import { useMidiStore, getMeasureCount, getSecondsPerMeasure } from '../../stores/midiStore';
+import {
+  useMidiStore,
+  getMeasureCount,
+  getSecondsPerMeasure,
+} from '../../stores/midiStore';
 import styles from './Controls.module.css';
 
 interface ControlsProps {
@@ -70,7 +74,8 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
 
   const truncateFilename = (name: string, maxLength = 25): string => {
     if (name.length <= maxLength) return name;
-    const ext = name.lastIndexOf('.') > 0 ? name.slice(name.lastIndexOf('.')) : '';
+    const ext =
+      name.lastIndexOf('.') > 0 ? name.slice(name.lastIndexOf('.')) : '';
     const baseName = name.slice(0, name.length - ext.length);
     const truncatedLength = maxLength - ext.length - 3;
     return baseName.slice(0, truncatedLength) + '...' + ext;
@@ -81,8 +86,12 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
       {/* Header row - always visible */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
-          <img src="/logo.png" alt="NoteRain" className={styles.logo} />
-
+          <img
+            src="/logo.png"
+            alt="noterain"
+            className={styles.logo}
+            style={{ background: 'white' }}
+          />
           {/* File controls */}
           <div className={styles.section}>
             <button
@@ -114,7 +123,7 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
               </select>
             )}
 
-{/* Export button hidden for now
+            {/* Export button hidden for now
             {currentFile && (
               <button className={styles.button} onClick={() => exportFile()}>
                 Export
@@ -146,7 +155,10 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
             {formatTime(currentTime)} / {formatTime(currentFile?.duration || 0)}
             {currentFile && (
               <span className={styles.measureDisplay}>
-                M{Math.floor(currentTime / getSecondsPerMeasure(currentFile)) + 1}/{getMeasureCount(currentFile)}
+                M
+                {Math.floor(currentTime / getSecondsPerMeasure(currentFile)) +
+                  1}
+                /{getMeasureCount(currentFile)}
               </span>
             )}
           </div>
@@ -167,10 +179,16 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
           <div className={styles.volumeControl}>
             <button
               className={`${styles.button} ${styles.iconButton} ${!settings.audioEnabled ? styles.mutedIcon : ''}`}
-              onClick={() => updateSettings({ audioEnabled: !settings.audioEnabled })}
+              onClick={() =>
+                updateSettings({ audioEnabled: !settings.audioEnabled })
+              }
               title={settings.audioEnabled ? 'Mute audio' : 'Enable audio'}
             >
-              {settings.audioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              {settings.audioEnabled ? (
+                <Volume2 size={16} />
+              ) : (
+                <VolumeX size={16} />
+              )}
             </button>
             {settings.audioEnabled && (
               <input
@@ -191,11 +209,17 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
           <button
             className={`${styles.button} ${styles.iconButton}`}
             onClick={() =>
-              updateSettings({ theme: settings.theme === 'mocha' ? 'latte' : 'mocha' })
+              updateSettings({
+                theme: settings.theme === 'mocha' ? 'latte' : 'mocha',
+              })
             }
             title={`Switch to ${settings.theme === 'mocha' ? 'light' : 'dark'} theme`}
           >
-            {settings.theme === 'mocha' ? <Sun size={16} /> : <Moon size={16} />}
+            {settings.theme === 'mocha' ? (
+              <Sun size={16} />
+            ) : (
+              <Moon size={16} />
+            )}
           </button>
 
           {/* Toggle expand button */}
@@ -244,14 +268,20 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
                 <select
                   className={styles.select}
                   value={settings.waitModeGracePeriod}
-                  onChange={(e) => updateSettings({ waitModeGracePeriod: parseInt(e.target.value) })}
+                  onChange={(e) =>
+                    updateSettings({
+                      waitModeGracePeriod: parseInt(e.target.value),
+                    })
+                  }
                   title="Grace period for early note hits"
                 >
-                  {[0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500].map((ms) => (
-                    <option key={ms} value={ms}>
-                      {ms}ms
-                    </option>
-                  ))}
+                  {[0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500].map(
+                    (ms) => (
+                      <option key={ms} value={ms}>
+                        {ms}ms
+                      </option>
+                    ),
+                  )}
                 </select>
               </>
             )}
@@ -263,7 +293,11 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
               <input
                 type="checkbox"
                 checked={settings.fitKeyboardToSong}
-                onChange={() => updateSettings({ fitKeyboardToSong: !settings.fitKeyboardToSong })}
+                onChange={() =>
+                  updateSettings({
+                    fitKeyboardToSong: !settings.fitKeyboardToSong,
+                  })
+                }
               />
               Fit keyboard to song
             </label>
@@ -275,7 +309,11 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
               <input
                 type="checkbox"
                 checked={settings.playMidiInputAudio}
-                onChange={() => updateSettings({ playMidiInputAudio: !settings.playMidiInputAudio })}
+                onChange={() =>
+                  updateSettings({
+                    playMidiInputAudio: !settings.playMidiInputAudio,
+                  })
+                }
               />
               Play MIDI input
               {isLoadingFullVelocity && (
@@ -292,7 +330,11 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
               <input
                 type="checkbox"
                 checked={settings.showNotesOverlay}
-                onChange={() => updateSettings({ showNotesOverlay: !settings.showNotesOverlay })}
+                onChange={() =>
+                  updateSettings({
+                    showNotesOverlay: !settings.showNotesOverlay,
+                  })
+                }
               />
               Show notes/chords
             </label>
@@ -356,7 +398,10 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
                       const val = parseInt(e.target.value) - 1;
                       if (!isNaN(val)) {
                         const maxMeasure = getMeasureCount(currentFile) - 1;
-                        setLoopRange(loopStartMeasure, Math.min(val, maxMeasure));
+                        setLoopRange(
+                          loopStartMeasure,
+                          Math.min(val, maxMeasure),
+                        );
                       }
                     }}
                     title="Loop end measure"
@@ -418,41 +463,64 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
           </div>
 
           {/* Track list - inline for 2 or fewer, dropdown for more */}
-          {currentFile && currentFile.tracks.length > 0 && currentFile.tracks.length <= 2 && currentFile.tracks.map((track) => (
-            <div
-              key={track.index}
-              className={styles.gridItem}
-              style={{ borderLeftColor: track.color, borderLeftWidth: 3, borderLeftStyle: 'solid' }}
-            >
-              <input
-                type="checkbox"
-                checked={track.enabled}
-                onChange={() =>
-                  useMidiStore.getState().toggleTrack(currentFile.id, track.index)
-                }
-              />
-              <span className={styles.trackName}>{track.name}</span>
-              <button
-                className={`${styles.trackButton} ${(track.renderOnly || track.enabled) ? styles.active : styles.crossed}`}
-                onClick={() =>
-                  useMidiStore.getState().toggleTrackRenderOnly(currentFile.id, track.index)
-                }
-                title={track.renderOnly ? 'Hide track' : 'Show track visually'}
-                disabled={track.enabled}
+          {currentFile &&
+            currentFile.tracks.length > 0 &&
+            currentFile.tracks.length <= 2 &&
+            currentFile.tracks.map((track) => (
+              <div
+                key={track.index}
+                className={styles.gridItem}
+                style={{
+                  borderLeftColor: track.color,
+                  borderLeftWidth: 3,
+                  borderLeftStyle: 'solid',
+                }}
               >
-                {(track.renderOnly || track.enabled) ? <Eye size={14} /> : <EyeOff size={14} />}
-              </button>
-              <button
-                className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
-                onClick={() =>
-                  useMidiStore.getState().toggleTrackPlayAudio(currentFile.id, track.index)
-                }
-                title={track.playAudio ? 'Mute track' : 'Play track audio'}
-              >
-                {track.playAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
-              </button>
-            </div>
-          ))}
+                <input
+                  type="checkbox"
+                  checked={track.enabled}
+                  onChange={() =>
+                    useMidiStore
+                      .getState()
+                      .toggleTrack(currentFile.id, track.index)
+                  }
+                />
+                <span className={styles.trackName}>{track.name}</span>
+                <button
+                  className={`${styles.trackButton} ${track.renderOnly || track.enabled ? styles.active : styles.crossed}`}
+                  onClick={() =>
+                    useMidiStore
+                      .getState()
+                      .toggleTrackRenderOnly(currentFile.id, track.index)
+                  }
+                  title={
+                    track.renderOnly ? 'Hide track' : 'Show track visually'
+                  }
+                  disabled={track.enabled}
+                >
+                  {track.renderOnly || track.enabled ? (
+                    <Eye size={14} />
+                  ) : (
+                    <EyeOff size={14} />
+                  )}
+                </button>
+                <button
+                  className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
+                  onClick={() =>
+                    useMidiStore
+                      .getState()
+                      .toggleTrackPlayAudio(currentFile.id, track.index)
+                  }
+                  title={track.playAudio ? 'Mute track' : 'Play track audio'}
+                >
+                  {track.playAudio ? (
+                    <Volume2 size={14} />
+                  ) : (
+                    <VolumeX size={14} />
+                  )}
+                </button>
+              </div>
+            ))}
 
           {/* Tracks dropdown for more than 2 tracks */}
           {currentFile && currentFile.tracks.length > 2 && (
@@ -461,7 +529,12 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
                 className={`${styles.button} ${tracksDropdownOpen ? styles.active : ''}`}
                 onClick={() => setTracksDropdownOpen(!tracksDropdownOpen)}
               >
-                Tracks ({currentFile.tracks.length}) {tracksDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                Tracks ({currentFile.tracks.length}){' '}
+                {tracksDropdownOpen ? (
+                  <ChevronUp size={14} />
+                ) : (
+                  <ChevronDown size={14} />
+                )}
               </button>
               {tracksDropdownOpen && (
                 <div className={styles.tracksDropdown}>
@@ -469,34 +542,58 @@ export function Controls({ isLoadingFullVelocity }: ControlsProps) {
                     <div
                       key={track.index}
                       className={styles.trackItem}
-                      style={{ borderLeftColor: track.color, borderLeftWidth: 3, borderLeftStyle: 'solid' }}
+                      style={{
+                        borderLeftColor: track.color,
+                        borderLeftWidth: 3,
+                        borderLeftStyle: 'solid',
+                      }}
                     >
                       <input
                         type="checkbox"
                         checked={track.enabled}
                         onChange={() =>
-                          useMidiStore.getState().toggleTrack(currentFile.id, track.index)
+                          useMidiStore
+                            .getState()
+                            .toggleTrack(currentFile.id, track.index)
                         }
                       />
                       <span className={styles.trackName}>{track.name}</span>
                       <button
-                        className={`${styles.trackButton} ${(track.renderOnly || track.enabled) ? styles.active : styles.crossed}`}
+                        className={`${styles.trackButton} ${track.renderOnly || track.enabled ? styles.active : styles.crossed}`}
                         onClick={() =>
-                          useMidiStore.getState().toggleTrackRenderOnly(currentFile.id, track.index)
+                          useMidiStore
+                            .getState()
+                            .toggleTrackRenderOnly(currentFile.id, track.index)
                         }
-                        title={track.renderOnly ? 'Hide track' : 'Show track visually'}
+                        title={
+                          track.renderOnly
+                            ? 'Hide track'
+                            : 'Show track visually'
+                        }
                         disabled={track.enabled}
                       >
-                        {(track.renderOnly || track.enabled) ? <Eye size={14} /> : <EyeOff size={14} />}
+                        {track.renderOnly || track.enabled ? (
+                          <Eye size={14} />
+                        ) : (
+                          <EyeOff size={14} />
+                        )}
                       </button>
                       <button
                         className={`${styles.trackButton} ${track.playAudio ? styles.active : styles.crossed}`}
                         onClick={() =>
-                          useMidiStore.getState().toggleTrackPlayAudio(currentFile.id, track.index)
+                          useMidiStore
+                            .getState()
+                            .toggleTrackPlayAudio(currentFile.id, track.index)
                         }
-                        title={track.playAudio ? 'Mute track' : 'Play track audio'}
+                        title={
+                          track.playAudio ? 'Mute track' : 'Play track audio'
+                        }
                       >
-                        {track.playAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                        {track.playAudio ? (
+                          <Volume2 size={14} />
+                        ) : (
+                          <VolumeX size={14} />
+                        )}
                       </button>
                     </div>
                   ))}

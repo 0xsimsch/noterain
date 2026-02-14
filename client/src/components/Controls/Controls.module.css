@@ -24,11 +24,11 @@
 }
 
 .logo {
-  height: 36px;
+  height: 28px;
   width: auto;
-  background: white;
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 2px 2px;
+  box-sizing: content-box;
 }
 
 .headerCenter {
@@ -76,7 +76,6 @@
   border-radius: 4px;
   border: 1px solid var(--border-color);
 }
-
 
 .section {
   display: flex;
