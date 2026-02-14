@@ -114,11 +114,11 @@ function App() {
         {settings.showNotesOverlay && <NotesOverlay />}
 
         {currentFile && settings.showSheetMusic && (
-          <SheetMusic />
+          <SheetMusic key={currentFile.id} />
         )}
 
         {currentFile && settings.showFallingNotes && !settings.showSheetMusic && (
-          <FallingNotes lookahead={3} minNote={minNote} maxNote={maxNote} />
+          <FallingNotes key={currentFile.id} lookahead={3} minNote={minNote} maxNote={maxNote} />
         )}
 
         {!currentFile && !isLoading && (
