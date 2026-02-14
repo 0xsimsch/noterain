@@ -26,4 +26,3 @@ bun.lock
 certs/
 
 # Deployment
-deploy.sh
