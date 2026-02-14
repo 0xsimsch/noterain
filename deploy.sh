@@ -12,10 +12,10 @@ docker pull $DOCKER_REGISTRY/$APP_IMAGE:$VERSION
 
 # Bring down the running containers
 echo "Stopping and removing existing containers..."
-docker-compose -f $COMPOSE_FILE down --remove-orphans
+docker compose -f $COMPOSE_FILE down --remove-orphans
 
 # Start the services with updated images
 echo "Starting updated services..."
-docker-compose -f $COMPOSE_FILE up -d
+docker compose -f $COMPOSE_FILE up -d
 
 echo "noterain has been updated and restarted."
