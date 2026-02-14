@@ -26,6 +26,9 @@
 .logo {
   height: 36px;
   width: auto;
+  background: white;
+  border-radius: 6px;
+  padding: 2px 6px;
 }
 
 .headerCenter {
