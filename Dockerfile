@@ -29,6 +29,7 @@ RUN adduser --system --uid 1001 nestjs
 # Copy built backend and install production deps fresh (avoids broken workspace symlinks)
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --chown=nestjs:nodejs package.json bun.lock ./
+COPY --from=builder /app/client/package.json ./client/
 RUN bun install --frozen-lockfile --production
 
 USER nestjs
